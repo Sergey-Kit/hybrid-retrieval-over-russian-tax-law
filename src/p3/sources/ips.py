@@ -201,6 +201,17 @@ class IpsClient:
     def edition_path(self, nd: str, rdk: int, page: int = 1) -> str:
         return f"{IPS_PATH}?doc_itself=&nd={nd}&page={page}&rdk={rdk}"
 
+    def full_text_path(self, nd: str, rdk: int) -> str:
+        """Полный текст редакции одним запросом.
+
+        Без `print=1` эндпоинт отдаёт только начало документа и **обрывает его
+        на середине предложения**, не сообщая об этом ничем: у НК ч.1 приходит
+        142 статьи против 25. Параметры `page`, `pg`, `p` при этом принимаются и
+        игнорируются, то есть постраничный обход дал бы один и тот же кусок,
+        размноженный сколько угодно раз.
+        """
+        return f"{IPS_PATH}?doc_itself=&nd={nd}&rdk={rdk}&print=1"
+
     # -- запросы --
 
     def card_html(self, nd: str) -> str:
@@ -217,6 +228,12 @@ class IpsClient:
 
     def edition_text(self, nd: str, rdk: int, page: int = 1) -> str:
         return strip_html(self.edition_html(nd, rdk, page))
+
+    def full_text_html(self, nd: str, rdk: int) -> str:
+        html = self.fetcher.get(self.full_text_path(nd, rdk), self.source).text
+        if is_text_absent(html):
+            raise EditionTextAbsent(f"nd={nd} rdk={rdk}: {TEXT_ABSENT_MARKER}")
+        return html
 
     def search(self, **kwargs) -> list[SearchHit]:
         attrs = search_attrs(**kwargs)
