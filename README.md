@@ -12,7 +12,7 @@ state**, including where reality diverged from the spec.
 ## Status: milestone 1 of 3
 
 Machinery complete and tested; live collection blocked on a direct connection (see below).
-**120 tests passing.**
+**153 tests passing.**
 
 ```bash
 pip install -r requirements.txt && python -m pytest -q
