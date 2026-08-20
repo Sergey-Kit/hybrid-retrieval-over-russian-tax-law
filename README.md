@@ -87,10 +87,11 @@ or an assertion.
 
 ## Limitations
 
-Live collection has not run yet — it is deliberately blocked while traffic exits through a
-VPN ([`docs/network-preflight.md`](docs/network-preflight.md)), and the spike figures were
-taken through a foreign exit over plain HTTP, so completeness of what was served is
-unproven. The silver set is biased toward disputes, has no negatives and no `as_of`, and its
-gold is article-level. ИПС terms of use are unconfirmed — a blocker for the commercial
+The silver set is 246 pairs against a >=300 target: the published listing of ФНС decisions
+ends at page 21, not the 46 the paginator advertises, so a second source is needed. It is
+also biased toward disputes, has no negatives and no `as_of`, and its gold is article-level.
+`pravo.gov.ru` serves no HTTPS at all — an earlier reading of this as geofiltering of foreign
+IPs was disproved from a Russian connection; the exit country is now recorded as provenance
+rather than enforced. ИПС terms of use are unconfirmed — a blocker for the commercial
 follow-on. Latency figures on this machine (GTX 1650 SUPER, 8 GB RAM, no AVX2) compare
 configurations against each other, not against production.
