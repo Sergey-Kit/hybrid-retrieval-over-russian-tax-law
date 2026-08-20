@@ -27,19 +27,19 @@ def make(decision_id: str, topic: str, labels: tuple[str, ...]) -> Decision:
 
 def test_official_label_becomes_norm_id():
     pair = pair_from_decision(make("1", "Истребование пояснений", ("Статья 93 НК РФ",)))
-    assert pair.gold_article_ids == ("nk1:93",)
+    assert pair.gold_article_ids == ("nk1/st93",)
     assert pair.query_id == "fns-1"
     assert pair.source == "fns_complaint_decision"
 
 
 def test_part_two_article_gets_part_two_id():
     pair = pair_from_decision(make("2", "Вычет по НДФЛ", ("Статья 220 НК РФ",)))
-    assert pair.gold_article_ids == ("nk2:220",)
+    assert pair.gold_article_ids == ("nk2/st220",)
 
 
 def test_multiple_labels_are_kept_in_order():
     pair = pair_from_decision(make("3", "Спор", ("Статья 220 НК РФ", "Статья 214.10 НК РФ")))
-    assert pair.gold_article_ids == ("nk2:220", "nk2:214.10")
+    assert pair.gold_article_ids == ("nk2/st220", "nk2/st214.10")
 
 
 def test_non_nk_label_is_dropped():
@@ -79,7 +79,7 @@ def test_dedup_collapses_cluster_and_merges_gold():
         pair_from_decision(make("2", "Истребование пояснений по статье 88 НК РФ", ("Статья 88 НК РФ",))),
     ]
     (merged,) = dedup(pairs)
-    assert set(merged.gold_article_ids) == {"nk1:93", "nk1:88"}
+    assert set(merged.gold_article_ids) == {"nk1/st93", "nk1/st88"}
 
 
 def test_dedup_keeps_distinct_topics():

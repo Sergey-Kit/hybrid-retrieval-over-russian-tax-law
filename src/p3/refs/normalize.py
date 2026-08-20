@@ -105,22 +105,30 @@ class Citation:
     span: tuple[int, int] = (0, 0)
 
     @property
+    def _head(self) -> str:
+        return f"nk{self.part}" if self.code == "nk" and self.part else self.code
+
+    @property
     def norm_unit_id(self) -> str:
-        head = f"nk{self.part}" if self.code == "nk" and self.part else self.code
-        parts = [head, self.article]
+        """Идентификатор в формате спеки чанкинга §5: `nk1/st88/p3`.
+
+        Формат обязан совпадать с тем, что строит ETL, иначе пересечения множеств
+        при подсчёте метрик окажутся пустыми — ничего не упадёт, recall просто
+        тихо занизится. P4 забирает silver set импортом по этому же ключу.
+        """
+        parts = [self._head, f"st{self.article}"]
         if self.point:
             parts.append(f"p{self.point}")
         if self.subpoint:
             parts.append(f"sp{self.subpoint}")
         if self.paragraph:
             parts.append(f"a{self.paragraph}")
-        return ":".join(parts)
+        return "/".join(parts)
 
     @property
     def article_id(self) -> str:
         """Идентификатор статьи целиком, без пунктов — для recall на уровне статьи."""
-        head = f"nk{self.part}" if self.code == "nk" and self.part else self.code
-        return f"{head}:{self.article}"
+        return f"{self._head}/st{self.article}"
 
 
 @dataclass
