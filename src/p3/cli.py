@@ -7,7 +7,7 @@ import json
 import logging
 import sys
 
-from p3.config import NALOG, PRAVO, SILVER_DIR
+from p3.config import EXPECTED_EXIT_COUNTRY, NALOG, PRAVO, PUBLICATION, SILVER_DIR
 from p3.fetch import PoliteFetcher
 from p3.netcheck import PreflightError, preflight
 from p3.raw_store import RawStore
@@ -26,6 +26,27 @@ def _require_network(sources) -> None:
     except PreflightError as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(2)
+
+
+def cmd_netcheck(args) -> None:
+    """Показать, годится ли сеть для сбора, и не падать при этом."""
+    from p3.netcheck import PreflightReport, exit_country, tcp_reachable
+
+    sources = [PRAVO, PUBLICATION, NALOG]
+    report = PreflightReport(
+        exit_country=exit_country(),
+        tls_ok={s.host: tcp_reachable(s.host, 443) for s in sources},
+    )
+    print(f"страна выхода: {report.exit_country or 'не определена'} (ожидается {EXPECTED_EXIT_COUNTRY})")
+    for host, ok in report.tls_ok.items():
+        print(f"  {host}:443 {'открыт' if ok else 'ЗАКРЫТ'}")
+
+    blocked = [h for h, ok in report.tls_ok.items() if not ok]
+    wrong_country = report.exit_country not in (None, EXPECTED_EXIT_COUNTRY)
+    if blocked or wrong_country:
+        print("\nСбор запрещён. Нужно прямое подключение, мимо VPN.")
+        raise SystemExit(1)
+    print("\nСреда годится для сбора.")
 
 
 def cmd_spike_ips(args) -> None:
@@ -73,6 +94,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--offline", action="store_true", help="только из raw_store, без сети")
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    check = sub.add_parser("netcheck", help="годится ли сеть для сбора")
+    check.set_defaults(func=cmd_netcheck)
 
     spike = sub.add_parser("spike-ips", help="сводка по редакциям НК ч.1 в ИПС")
     spike.add_argument("--since", type=int, default=2021)
