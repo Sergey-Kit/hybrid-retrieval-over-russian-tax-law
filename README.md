@@ -12,7 +12,7 @@ state**, including where reality diverged from the spec.
 ## Status: milestone 1 of 3
 
 Machinery complete and tested; live collection blocked on a direct connection (see below).
-**92 tests passing.**
+**120 tests passing.**
 
 ```bash
 pip install -r requirements.txt && python -m pytest -q
@@ -87,9 +87,12 @@ or an assertion.
 
 ## Limitations
 
-The silver set is 246 pairs against a >=300 target: the published listing of ФНС decisions
-ends at page 21, not the 46 the paginator advertises, so a second source is needed. It is
-also biased toward disputes, has no negatives and no `as_of`, and its gold is article-level.
+The silver set now holds 1678 pairs from two sources, but it aims at the wrong population:
+only 52 of them (3%) touch the layer-1 procedural articles the product actually serves, 8 of
+337 in the test split, and article 6.1 — which governs how every response deadline is counted
+— draws zero queries. Recall over this set therefore describes tax-law retrieval in general
+and must not be published as a product metric. It is also biased toward disputes, has no
+negatives and no `as_of`, and its gold is article-level.
 `pravo.gov.ru` serves no HTTPS at all — an earlier reading of this as geofiltering of foreign
 IPs was disproved from a Russian connection; the exit country is now recorded as provenance
 rather than enforced. ИПС terms of use are unconfirmed — a blocker for the commercial

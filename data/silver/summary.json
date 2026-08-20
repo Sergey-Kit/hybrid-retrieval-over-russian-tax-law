@@ -1,14 +1,25 @@
 {
-  "total": 246,
+  "total": 1678,
   "by_split": {
-    "train": 147,
-    "dev": 49,
-    "test": 50
+    "train": 1006,
+    "dev": 335,
+    "test": 337
+  },
+  "by_source": {
+    "fns_complaint_decision": 246,
+    "fns_letter": 1432
   },
   "by_query_type": {
-    "lexical_anchor": 1,
-    "mixed": 21,
-    "natural_language": 224
+    "lexical_anchor": 7,
+    "mixed": 228,
+    "natural_language": 1443
   },
-  "distinct_articles": 176
+  "distinct_articles": 403,
+  "part1_pairs": 260,
+  "layer1_pairs": 52,
+  "layer1_by_split": {
+    "train": 32,
+    "dev": 12,
+    "test": 8
+  }
 }
