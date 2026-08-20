@@ -1,8 +1,11 @@
 # Сырьё скачанных документов — в git не хранится, в git хранится только манифест.
 data/raw/*
 !data/raw/manifest.jsonl
+# Silver set — производные данные, но маленькие и нужны P4 импортом.
 data/silver/*
 !data/silver/.gitkeep
+!data/silver/*.jsonl
+!data/silver/summary.json
 
 __pycache__/
 *.py[cod]

@@ -7,7 +7,7 @@ import json
 import logging
 import sys
 
-from p3.config import EXPECTED_EXIT_COUNTRY, NALOG, PRAVO, PUBLICATION, SILVER_DIR
+from p3.config import NALOG, PRAVO, PUBLICATION, SILVER_DIR
 from p3.fetch import PoliteFetcher
 from p3.netcheck import PreflightError, preflight
 from p3.raw_store import RawStore
@@ -17,7 +17,12 @@ from p3.sources.ips import NK_PART_1, NK_PART_2, IpsClient
 
 
 def _fetcher(args) -> PoliteFetcher:
-    return PoliteFetcher(RawStore(), offline=args.offline)
+    # Страна выхода определяется один раз за прогон и пишется в манифест рядом
+    # с каждым документом: происхождение корпуса должно быть прослеживаемым.
+    from p3.netcheck import exit_country
+
+    country = None if args.offline else exit_country()
+    return PoliteFetcher(RawStore(), offline=args.offline, exit_country=country)
 
 
 def _require_network(sources) -> None:
@@ -29,23 +34,28 @@ def _require_network(sources) -> None:
 
 
 def cmd_netcheck(args) -> None:
-    """Показать, годится ли сеть для сбора, и не падать при этом."""
-    from p3.netcheck import PreflightReport, exit_country, tcp_reachable
+    """Показать, годится ли среда для сбора, и почему."""
+    from p3.netcheck import PreflightError, preflight, tcp_reachable
 
     sources = [PRAVO, PUBLICATION, NALOG]
-    report = PreflightReport(
-        exit_country=exit_country(),
-        tls_ok={s.host: tcp_reachable(s.host, 443) for s in sources},
-    )
-    print(f"страна выхода: {report.exit_country or 'не определена'} (ожидается {EXPECTED_EXIT_COUNTRY})")
-    for host, ok in report.tls_ok.items():
-        print(f"  {host}:443 {'открыт' if ok else 'ЗАКРЫТ'}")
+    for source in sources:
+        tls = tcp_reachable(source.host, 443)
+        http = tcp_reachable(source.host, 80)
+        required = "нужен" if source.require_tls else "не нужен"
+        print(
+            f"  {source.host:32} 443={'открыт' if tls else 'закрыт':7} "
+            f"80={'открыт' if http else 'закрыт':7} (TLS {required})"
+        )
 
-    blocked = [h for h, ok in report.tls_ok.items() if not ok]
-    wrong_country = report.exit_country not in (None, EXPECTED_EXIT_COUNTRY)
-    if blocked or wrong_country:
-        print("\nСбор запрещён. Нужно прямое подключение, мимо VPN.")
+    try:
+        report = preflight(sources)
+    except PreflightError as exc:
+        print(f"\n{exc}")
         raise SystemExit(1)
+
+    print(f"\nстрана выхода: {report.exit_country or 'не определена'}")
+    if report.country_warning:
+        print(f"  предупреждение: {report.country_warning}")
     print("\nСреда годится для сбора.")
 
 
@@ -138,22 +148,28 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    check = sub.add_parser("netcheck", help="годится ли сеть для сбора")
+    def add(name: str, help_: str):
+        """Подкоманда, принимающая -v и после себя, а не только до."""
+        child = sub.add_parser(name, help=help_)
+        child.add_argument("-v", "--verbose", action="store_true")
+        return child
+
+    check = add("netcheck", "годится ли сеть для сбора")
     check.set_defaults(func=cmd_netcheck)
 
-    spike = sub.add_parser("spike-ips", help="сводка по редакциям НК ч.1 в ИПС")
+    spike = add("spike-ips", "сводка по редакциям НК ч.1 в ИПС")
     spike.add_argument("--since", type=int, default=2021)
     spike.set_defaults(func=cmd_spike_ips)
 
-    collect = sub.add_parser("collect-fns", help="собрать решения по жалобам ФНС")
+    collect = add("collect-fns", "собрать решения по жалобам ФНС")
     collect.add_argument("--max-pages", type=int, default=200)
     collect.set_defaults(func=cmd_collect_fns)
 
-    collect_all = sub.add_parser("collect-all", help="весь сетевой сбор одной командой")
+    collect_all = add("collect-all", "весь сетевой сбор одной командой")
     collect_all.add_argument("--max-pages", type=int, default=200)
     collect_all.set_defaults(func=cmd_collect_all)
 
-    build_cmd = sub.add_parser("build-silver", help="собрать silver set из кэша")
+    build_cmd = add("build-silver", "собрать silver set из кэша")
     build_cmd.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=SILVER_DIR)
     build_cmd.add_argument("--seed", type=int, default=42)
     build_cmd.add_argument("--max-pages", type=int, default=200)

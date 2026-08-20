@@ -53,3 +53,22 @@ def test_lookup_ignores_entry_whose_bytes_are_gone(tmp_path):
     store.path_for(entry.sha256).unlink()
 
     assert store.lookup("http://example/1", "t") is None
+
+
+def test_exit_country_is_recorded_as_provenance(tmp_path):
+    """Источник может отдавать разное разным адресам — происхождение должно быть видно."""
+    store = RawStore(tmp_path)
+    entry = store.put("http://example/1", b"x", source="t", exit_country="FI")
+
+    assert entry.exit_country == "FI"
+    assert RawStore(tmp_path).lookup("http://example/1", "t").exit_country == "FI"
+
+
+def test_manifest_written_before_provenance_still_loads(tmp_path):
+    """Старые строки манифеста не должны ломать загрузку после расширения схемы."""
+    (tmp_path / "manifest.jsonl").write_text(
+        '{"sha256":"a","url":"u","source":"t","fetched_at":"2026-01-01T00:00:00+00:00"}\n',
+        encoding="utf-8",
+    )
+    store = RawStore(tmp_path)
+    assert len(store) == 1

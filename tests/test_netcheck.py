@@ -21,21 +21,32 @@ def test_tcp_reachable_false_on_closed_port():
     assert tcp_reachable("127.0.0.1", port, timeout=2) is False
 
 
-def test_preflight_fails_when_tls_port_is_filtered(monkeypatch):
-    """Геофильтр 443 обязан останавливать сбор, а не деградировать до http."""
+def test_preflight_fails_when_required_tls_is_unreachable(monkeypatch):
+    """443 требуется только с источников, которые HTTPS действительно отдают."""
     monkeypatch.setattr("p3.netcheck.tcp_reachable", lambda *a, **k: False)
     monkeypatch.setattr("p3.netcheck.exit_country", lambda *a, **k: "RU")
 
     with pytest.raises(PreflightError, match="443"):
-        preflight([Source(name="s", host="example.invalid")])
+        preflight([Source(name="s", host="example.invalid", require_tls=True)])
 
 
-def test_preflight_fails_on_foreign_exit(monkeypatch):
+def test_http_only_source_is_not_blocked_by_closed_443(monkeypatch):
+    """pravo.gov.ru не слушает 443 ни для кого — требовать TLS значит запретить сбор."""
+    monkeypatch.setattr("p3.netcheck.tcp_reachable", lambda *a, **k: False)
+    monkeypatch.setattr("p3.netcheck.exit_country", lambda *a, **k: "RU")
+
+    report = preflight([Source(name="s", host="example.invalid", require_tls=False)])
+    assert report.country_warning is None
+
+
+def test_foreign_exit_warns_but_does_not_block(monkeypatch):
+    """Гео-сервисы расходятся и недоступны из РФ без VPN — это не критерий отказа."""
     monkeypatch.setattr("p3.netcheck.tcp_reachable", lambda *a, **k: True)
     monkeypatch.setattr("p3.netcheck.exit_country", lambda *a, **k: "FI")
 
-    with pytest.raises(PreflightError, match="FI"):
-        preflight([Source(name="s", host="example.invalid")])
+    report = preflight([Source(name="s", host="example.invalid")])
+    assert report.exit_country == "FI"
+    assert "FI" in report.country_warning
 
 
 def test_preflight_passes_on_clean_environment(monkeypatch):
@@ -44,6 +55,7 @@ def test_preflight_passes_on_clean_environment(monkeypatch):
 
     report = preflight([Source(name="s", host="example.invalid")])
     assert report.exit_country == "RU"
+    assert report.country_warning is None
 
 
 def test_unknown_country_does_not_block(monkeypatch):

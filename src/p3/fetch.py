@@ -57,11 +57,14 @@ class PoliteFetcher:
         offline: bool = False,
         throttle: float = THROTTLE_SECONDS,
         respect_robots: bool = True,
+        exit_country: str | None = None,
     ) -> None:
         self.store = store if store is not None else RawStore()
         self.offline = offline
         self.throttle = throttle
         self.respect_robots = respect_robots
+        #: Пишется в манифест рядом с каждым документом как происхождение.
+        self.exit_country = exit_country
         self._last_request: dict[str, float] = {}
         self._robots: dict[str, urllib.robotparser.RobotFileParser | None] = {}
         self.session = requests.Session()
@@ -144,6 +147,7 @@ class PoliteFetcher:
                         source=source.name,
                         content_type=resp.headers.get("Content-Type"),
                         encoding=encoding,
+                        exit_country=self.exit_country,
                     )
                     text = resp.content.decode(encoding, errors="replace")
                     return Fetched(entry, text, from_cache=False)

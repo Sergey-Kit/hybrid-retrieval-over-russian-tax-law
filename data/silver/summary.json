@@ -1,0 +1,14 @@
+{
+  "total": 246,
+  "by_split": {
+    "train": 147,
+    "dev": 49,
+    "test": 50
+  },
+  "by_query_type": {
+    "lexical_anchor": 1,
+    "mixed": 21,
+    "natural_language": 224
+  },
+  "distinct_articles": 176
+}

@@ -34,6 +34,10 @@ class RawEntry:
     content_type: str | None = None
     encoding: str | None = None
     size: int = 0
+    #: Страна выхода в сеть на момент загрузки. Происхождение важнее запретов:
+    #: источники могут отдавать разное разным адресам, и если корпус окажется
+    #: неполным, это первое, на что нужно смотреть.
+    exit_country: str | None = None
 
 
 def sha256_bytes(content: bytes) -> str:
@@ -96,6 +100,7 @@ class RawStore:
         source: str,
         content_type: str | None = None,
         encoding: str | None = None,
+        exit_country: str | None = None,
     ) -> RawEntry:
         sha = sha256_bytes(content)
         dest = self.path_for(sha)
@@ -120,6 +125,7 @@ class RawStore:
             content_type=content_type,
             encoding=encoding,
             size=len(content),
+            exit_country=exit_country,
         )
         previous = self._by_url.get((source, url))
         # Тот же URL с тем же содержимым не плодит строк в манифесте.

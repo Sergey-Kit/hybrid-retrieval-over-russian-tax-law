@@ -46,8 +46,8 @@ class Source:
     scheme: str = "https"
     #: Кодировка, если сервер её не объявляет или объявляет неверно.
     force_encoding: str | None = None
-    #: Требовать ли доступности 443 в преflight. Для геофильтрованных источников
-    #: недоступность 443 означает, что мы смотрим на них с "не того" адреса.
+    #: Требовать ли доступности 443 в преflight.
+    #: Ставится False для источников, которые HTTPS не отдают в принципе.
     require_tls: bool = True
 
     @property
@@ -55,14 +55,22 @@ class Source:
         return f"{self.scheme}://{self.host}"
 
 
+# pravo.gov.ru не слушает 443 — ни с иностранного адреса, ни с российского
+# (проверено с выхода в Финляндии и с прямого подключения из РФ, 2026-08-20).
+# Сайт работает только по HTTP. Требовать здесь TLS означало бы заблокировать
+# сбор навсегда.
 PRAVO = Source(
     name="pravo",
     host="pravo.gov.ru",
+    scheme="http",
     force_encoding="cp1251",
+    require_tls=False,
 )
 PUBLICATION = Source(
     name="publication",
     host="publication.pravo.gov.ru",
+    scheme="http",
+    require_tls=False,
 )
 NALOG = Source(
     name="nalog",
