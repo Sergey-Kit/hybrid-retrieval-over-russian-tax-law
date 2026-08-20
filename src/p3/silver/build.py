@@ -22,6 +22,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from p3.refs.normalize import find_citations
+from p3.sources.fns_letters import Letter
 from p3.sources.nalog_ru import Decision
 
 #: Доли train/dev/test. Тюнинг — только на train и dev.
@@ -33,6 +34,14 @@ QUERY_TYPE_MIXED = "mixed"
 
 #: Ниже этого числа слов (без учёта самой ссылки) запрос считается чисто лексическим.
 _NATURAL_WORDS_MIN = 5
+
+#: Статьи слоя 1 по таблице ТЗ §1: вопросы про само требование ФНС.
+#: Продукт первой версии обслуживает именно их, и долю набора, которая их
+#: задевает, надо знать отдельно от общей цифры.
+LAYER1_ARTICLES = frozenset({
+    "nk1/st88", "nk1/st93", "nk1/st93.1", "nk1/st6.1", "nk1/st31",
+    "nk1/st23", "nk1/st126", "nk1/st129.1", "nk1/st100", "nk1/st101",
+})
 
 
 @dataclass(frozen=True)
@@ -83,11 +92,20 @@ def classify_query(text: str) -> str:
     return QUERY_TYPE_MIXED if len(words) >= _NATURAL_WORDS_MIN else QUERY_TYPE_LEXICAL
 
 
-def pair_from_decision(decision: Decision) -> SilverPair | None:
-    """Пара из одного решения, либо None, если разметка не про НК."""
+SOURCE_DECISION = "fns_complaint_decision"
+SOURCE_LETTER = "fns_letter"
+
+
+def _gold_from_labels(labels: tuple[str, ...]) -> tuple[list[str], list[str]]:
+    """Официальные ярлыки статей → norm_unit_id и article_id.
+
+    Эталон берётся из поля, которое заполнило ведомство, а не извлекается из
+    текста эвристикой. Именно поэтому для этих источников не возникает дефект
+    «нормы не приведены к norm_unit_id, метрики занижены».
+    """
     norm_ids: list[str] = []
     article_ids: list[str] = []
-    for label in decision.article_labels:
+    for label in labels:
         for citation in find_citations(label, default_code=None):
             if citation.code != "nk":
                 continue
@@ -95,18 +113,49 @@ def pair_from_decision(decision: Decision) -> SilverPair | None:
                 norm_ids.append(citation.norm_unit_id)
             if citation.article_id not in article_ids:
                 article_ids.append(citation.article_id)
-    if not article_ids:
-        return None
+    return norm_ids, article_ids
 
+
+def _pair(*, query: str, labels: tuple[str, ...], source: str, source_id: str) -> SilverPair | None:
+    norm_ids, article_ids = _gold_from_labels(labels)
+    if not article_ids or not query.strip():
+        return None
     return SilverPair(
-        query_id=f"fns-{decision.decision_id}",
-        query=decision.topic,
+        query_id=f"{'fns' if source == SOURCE_DECISION else 'let'}-{source_id}",
+        query=query,
         gold_norm_ids=tuple(norm_ids),
         gold_article_ids=tuple(article_ids),
-        query_type=classify_query(decision.topic),
-        source="fns_complaint_decision",
+        query_type=classify_query(query),
+        source=source,
+        source_id=source_id,
+        cluster_id=normalize_for_clustering(query),
+    )
+
+
+def pair_from_decision(decision: Decision) -> SilverPair | None:
+    """Пара из одного решения, либо None, если разметка не про НК."""
+    return _pair(
+        query=decision.topic,
+        labels=decision.article_labels,
+        source=SOURCE_DECISION,
         source_id=decision.decision_id,
-        cluster_id=normalize_for_clustering(decision.topic),
+    )
+
+
+def pair_from_letter(letter: Letter) -> SilverPair | None:
+    """Пара из письма ФНС.
+
+    Административные письма отбрасываются: в поле «Вопрос:» у них стоит тема
+    распорядительного документа («Об утверждении приказа…»), то есть эталон есть,
+    а запроса по существу нет.
+    """
+    if letter.is_administrative:
+        return None
+    return _pair(
+        query=letter.question,
+        labels=letter.article_labels,
+        source=SOURCE_LETTER,
+        source_id=letter.letter_id,
     )
 
 
@@ -166,8 +215,19 @@ def split(
     return result
 
 
-def build(decisions: list[Decision], *, seed: int = 42) -> dict[str, list[SilverPair]]:
+def build(
+    decisions: list[Decision],
+    letters: list[Letter] | None = None,
+    *,
+    seed: int = 42,
+) -> dict[str, list[SilverPair]]:
+    """Собрать набор из обоих источников.
+
+    Кластеризация общая: если тема письма совпала с темой решения, они обязаны
+    попасть в один сплит, иначе получится утечка между источниками.
+    """
     pairs = [p for p in (pair_from_decision(d) for d in decisions) if p is not None]
+    pairs += [p for p in (pair_from_letter(x) for x in (letters or [])) if p is not None]
     return split(dedup(pairs), seed=seed)
 
 
@@ -183,9 +243,27 @@ def summarize(splits: dict[str, list[SilverPair]]) -> dict[str, object]:
     by_type: dict[str, int] = defaultdict(int)
     for pair in all_pairs:
         by_type[pair.query_type] += 1
+    by_source: dict[str, int] = defaultdict(int)
+    for pair in all_pairs:
+        by_source[pair.source] += 1
+
+    articles = {a for p in all_pairs for a in p.gold_article_ids}
+    layer1_pairs = [p for p in all_pairs if set(p.gold_article_ids) & LAYER1_ARTICLES]
+    part1_pairs = [p for p in all_pairs if any(a.startswith("nk1/") for a in p.gold_article_ids)]
+
     return {
         "total": len(all_pairs),
         "by_split": {name: len(pairs) for name, pairs in splits.items()},
+        "by_source": dict(sorted(by_source.items())),
         "by_query_type": dict(sorted(by_type.items())),
-        "distinct_articles": len({a for p in all_pairs for a in p.gold_article_ids}),
+        "distinct_articles": len(articles),
+        # Разрезы из плана: набор построен из споров по всему налоговому праву,
+        # а продукт обслуживает узкий процедурный срез. Обе доли нужны в README,
+        # иначе headline-цифра описывает не ту нагрузку.
+        "part1_pairs": len(part1_pairs),
+        "layer1_pairs": len(layer1_pairs),
+        "layer1_by_split": {
+            name: sum(1 for p in pairs if set(p.gold_article_ids) & LAYER1_ARTICLES)
+            for name, pairs in splits.items()
+        },
     }

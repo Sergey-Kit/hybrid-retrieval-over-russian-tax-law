@@ -11,6 +11,9 @@ import logging
 
 from p3.config import NALOG
 from p3.fetch import PoliteFetcher
+from p3.sources.fns_letters import Letter, letter_path
+from p3.sources.fns_letters import list_path as letters_list_path
+from p3.sources.fns_letters import parse_letter, parse_letter_ids
 from p3.sources.nalog_ru import Decision, list_path, parse_decisions
 
 log = logging.getLogger(__name__)
@@ -53,3 +56,53 @@ def collect_decisions(
             break
 
     return list(seen.values())
+
+
+def collect_letters(
+    fetcher: PoliteFetcher,
+    *,
+    max_pages: int = MAX_PAGES,
+    stop_after_empty: int = 2,
+) -> list[Letter]:
+    """Собрать письма ФНС, обязательные для применения.
+
+    Двухуровневый обход: страницы списка дают идентификаторы, поля берутся со
+    страницы самого письма. Как и у решений, признак конца — страница без новых
+    идентификаторов, а не число из пагинатора.
+    """
+    letter_ids: list[str] = []
+    seen_ids: set[str] = set()
+    empty_streak = 0
+
+    for page in range(1, max_pages + 1):
+        html = fetcher.get(letters_list_path(page), NALOG).text
+        ids = parse_letter_ids(html)
+        new = [i for i in ids if i not in seen_ids]
+
+        if not ids:
+            empty_streak += 1
+            if empty_streak >= stop_after_empty:
+                break
+            continue
+        empty_streak = 0
+
+        if not new:
+            log.info("страница %s: новых писем нет, обход закончен", page)
+            break
+
+        seen_ids.update(new)
+        letter_ids.extend(new)
+        log.info("страница %s: писем %s, новых %s", page, len(ids), len(new))
+
+    letters: list[Letter] = []
+    for index, letter_id in enumerate(letter_ids, 1):
+        html = fetcher.get(letter_path(letter_id), NALOG).text
+        letter = parse_letter(html, letter_id)
+        if letter is None:
+            log.info("письмо %s без темы — пропущено", letter_id)
+            continue
+        letters.append(letter)
+        if index % 50 == 0:
+            log.info("разобрано писем: %s из %s", index, len(letter_ids))
+
+    return letters

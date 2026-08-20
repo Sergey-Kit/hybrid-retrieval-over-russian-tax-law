@@ -12,7 +12,7 @@ from p3.fetch import PoliteFetcher
 from p3.netcheck import PreflightError, preflight
 from p3.raw_store import RawStore
 from p3.silver.build import build, summarize, write_jsonl
-from p3.silver.collect import collect_decisions
+from p3.silver.collect import collect_decisions, collect_letters
 from p3.sources.ips import NK_PART_1, NK_PART_2, IpsClient
 
 
@@ -126,11 +126,24 @@ def cmd_collect_all(args) -> None:
     print("Готово. VPN можно включать обратно.")
 
 
+def cmd_collect_letters(args) -> None:
+    if not args.offline:
+        _require_network([NALOG])
+    letters = collect_letters(_fetcher(args), max_pages=args.max_pages)
+    usable = [x for x in letters if not x.is_administrative and x.article_labels]
+    print(f"собрано писем: {len(letters)}; годных для silver set: {len(usable)}")
+
+
 def cmd_build_silver(args) -> None:
     # Сборка идёт из кэша: сеть здесь не нужна и не должна использоваться.
     fetcher = PoliteFetcher(RawStore(), offline=True)
     decisions = collect_decisions(fetcher, max_pages=args.max_pages)
-    splits = build(decisions, seed=args.seed)
+    try:
+        letters = collect_letters(fetcher, max_pages=args.max_pages)
+    except Exception as exc:  # noqa: BLE001 — писем может не быть в кэше
+        print(f"письма не прочитаны из кэша ({exc}); собираю только по решениям")
+        letters = []
+    splits = build(decisions, letters, seed=args.seed)
 
     out = args.out
     for name, pairs in splits.items():
@@ -168,6 +181,10 @@ def main(argv: list[str] | None = None) -> None:
     collect_all = add("collect-all", "весь сетевой сбор одной командой")
     collect_all.add_argument("--max-pages", type=int, default=200)
     collect_all.set_defaults(func=cmd_collect_all)
+
+    letters = add("collect-letters", "собрать письма ФНС, обязательные для применения")
+    letters.add_argument("--max-pages", type=int, default=200)
+    letters.set_defaults(func=cmd_collect_letters)
 
     build_cmd = add("build-silver", "собрать silver set из кэша")
     build_cmd.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=SILVER_DIR)

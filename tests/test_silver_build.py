@@ -145,3 +145,60 @@ def test_write_jsonl_is_stable(tmp_path):
     write_jsonl(pairs, first)
     write_jsonl(list(reversed(pairs)), second)
     assert first.read_bytes() == second.read_bytes()
+
+
+# --- письма как второй источник ---------------------------------------
+
+def make_letter(letter_id: str, question: str, labels: tuple[str, ...]):
+    from p3.sources.fns_letters import Letter
+    return Letter(letter_id=letter_id, question=question, article_labels=labels)
+
+
+def test_pair_from_letter_uses_official_tags():
+    from p3.silver.build import SOURCE_LETTER, pair_from_letter
+    pair = pair_from_letter(make_letter("9", "О сроке ответа на требование", ("Статья 93 НК РФ",)))
+    assert pair.gold_article_ids == ("nk1/st93",)
+    assert pair.source == SOURCE_LETTER
+    assert pair.query_id == "let-9"
+
+
+def test_administrative_letter_is_not_a_pair():
+    """Эталон есть, а запроса по существу нет — такая пара только шумит."""
+    from p3.silver.build import pair_from_letter
+    assert pair_from_letter(
+        make_letter("10", "Об утверждении приказа ФНС России", ("Статья 93 НК РФ",))
+    ) is None
+
+
+def test_letter_without_nk_tags_is_dropped():
+    from p3.silver.build import pair_from_letter
+    assert pair_from_letter(make_letter("11", "Спор", ("Статья 52 ГК РФ",))) is None
+
+
+def test_build_merges_both_sources():
+    from p3.silver.build import SOURCE_DECISION, SOURCE_LETTER
+    decisions = [make("1", "Истребование документов у контрагента", ("Статья 93.1 НК РФ",))]
+    letters = [make_letter("2", "О порядке заверения копий документов", ("Статья 93 НК РФ",))]
+    splits = build(decisions, letters)
+    sources = {p.source for pairs in splits.values() for p in pairs}
+    assert sources == {SOURCE_DECISION, SOURCE_LETTER}
+
+
+def test_identical_topic_from_both_sources_lands_in_one_split():
+    """Иначе получится утечка между источниками, незаметная в метриках."""
+    decisions = [make("1", "О сроке ответа на требование", ("Статья 93 НК РФ",))]
+    letters = [make_letter("2", "О сроке ответа на требование", ("Статья 93.1 НК РФ",))]
+    splits = build(decisions, letters)
+    non_empty = [name for name, pairs in splits.items() if pairs]
+    assert len(non_empty) == 1
+
+
+def test_summarize_reports_layer1_and_part1():
+    decisions = [
+        make("1", "Истребование документов в порядке камеральной проверки", ("Статья 88 НК РФ",)),
+        make("2", "Вычет по налогу на доходы физических лиц", ("Статья 220 НК РФ",)),
+    ]
+    report = summarize(build(decisions))
+    assert report["layer1_pairs"] == 1
+    assert report["part1_pairs"] == 1
+    assert report["by_source"]["fns_complaint_decision"] == 2
