@@ -13,7 +13,7 @@ from p3.netcheck import PreflightError, preflight
 from p3.raw_store import RawStore
 from p3.silver.build import build, summarize, write_jsonl
 from p3.silver.collect import collect_decisions
-from p3.sources.ips import NK_PART_1, IpsClient
+from p3.sources.ips import NK_PART_1, NK_PART_2, IpsClient
 
 
 def _fetcher(args) -> PoliteFetcher:
@@ -73,6 +73,49 @@ def cmd_collect_fns(args) -> None:
     print(f"собрано решений: {len(decisions)}")
 
 
+def cmd_collect_all(args) -> None:
+    """Весь сетевой сбор одной командой.
+
+    Нужна, потому что окно прямого подключения короткое: пользователь выключает
+    VPN, запускает это, включает обратно. Всё дальнейшее считается из кэша.
+    Команда идемпотентна — повторный запуск берёт уже скачанное из raw_store.
+    """
+    _require_network([PRAVO, NALOG])
+    fetcher = _fetcher(args)
+    problems: list[str] = []
+
+    print("1/2  карточки редакций НК из ИПС...")
+    client = IpsClient(fetcher)
+    for document in (NK_PART_1, NK_PART_2):
+        try:
+            editions = client.editions(document.nd)
+            years = sorted({e.year for e in editions if e.year})
+            span = f"{years[0]}-{years[-1]}" if years else "нет дат"
+            print(f"     {document.title}: редакций {len(editions)}, годы {span}")
+        except Exception as exc:  # noqa: BLE001 — сообщаем и продолжаем
+            problems.append(f"ИПС {document.nd}: {exc}")
+            print(f"     ОШИБКА {document.title}: {exc}")
+
+    print("2/2  решения по жалобам ФНС...")
+    try:
+        decisions = collect_decisions(fetcher, max_pages=args.max_pages)
+        print(f"     собрано решений: {len(decisions)}")
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f"ФНС: {exc}")
+        print(f"     ОШИБКА: {exc}")
+        decisions = []
+
+    store = fetcher.store
+    print(f"\nв кэше документов: {len(store)}")
+    if problems:
+        print("\nБЫЛИ ОШИБКИ:")
+        for problem in problems:
+            print(f"  - {problem}")
+        print("Команду можно запустить повторно — уже скачанное берётся из кэша.")
+        raise SystemExit(1)
+    print("Готово. VPN можно включать обратно.")
+
+
 def cmd_build_silver(args) -> None:
     # Сборка идёт из кэша: сеть здесь не нужна и не должна использоваться.
     fetcher = PoliteFetcher(RawStore(), offline=True)
@@ -105,6 +148,10 @@ def main(argv: list[str] | None = None) -> None:
     collect = sub.add_parser("collect-fns", help="собрать решения по жалобам ФНС")
     collect.add_argument("--max-pages", type=int, default=200)
     collect.set_defaults(func=cmd_collect_fns)
+
+    collect_all = sub.add_parser("collect-all", help="весь сетевой сбор одной командой")
+    collect_all.add_argument("--max-pages", type=int, default=200)
+    collect_all.set_defaults(func=cmd_collect_all)
 
     build_cmd = sub.add_parser("build-silver", help="собрать silver set из кэша")
     build_cmd.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=SILVER_DIR)
