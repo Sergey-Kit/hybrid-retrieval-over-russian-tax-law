@@ -13,6 +13,8 @@ from p3.netcheck import PreflightError, preflight
 from p3.raw_store import RawStore
 from p3.silver.build import build, summarize, write_jsonl
 from p3.silver.collect import collect_decisions, collect_letters
+from p3.nk.parse import parse_articles
+from p3.silver.layer1 import build_layer1_pairs, verify as verify_layer1
 from p3.sources.ips import NK_PART_1, NK_PART_2, IpsClient
 
 
@@ -155,6 +157,35 @@ def cmd_build_silver(args) -> None:
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 
+def cmd_build_layer1(args) -> None:
+    """Синтетический набор слоя 1 из разобранного текста НК ч.1."""
+    fetcher = PoliteFetcher(RawStore(), offline=True)
+    client = IpsClient(fetcher)
+    rdk = args.rdk
+    if rdk is None:
+        rdk = max(e.rdk for e in client.editions(NK_PART_1.nd))
+    articles = parse_articles(client.full_text_html(NK_PART_1.nd, rdk), part=1)
+    print(f"разобрано статей: {len(articles)} (редакция rdk={rdk})")
+
+    problems = verify_layer1(articles)
+    if problems:
+        print("набор не сходится с корпусом:")
+        for problem in problems:
+            print(f"  - {problem}")
+        raise SystemExit(1)
+
+    pairs = build_layer1_pairs(articles)
+    write_jsonl(pairs, args.out / "layer1.jsonl")
+    by_type: dict[str, int] = {}
+    for pair in pairs:
+        by_type[pair.query_type] = by_type.get(pair.query_type, 0) + 1
+    print(json.dumps({
+        "pairs": len(pairs),
+        "by_query_type": by_type,
+        "articles_covered": sorted({a for p in pairs for a in p.gold_article_ids}),
+    }, ensure_ascii=False, indent=2))
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="p3")
     parser.add_argument("--offline", action="store_true", help="только из raw_store, без сети")
@@ -191,6 +222,11 @@ def main(argv: list[str] | None = None) -> None:
     build_cmd.add_argument("--seed", type=int, default=42)
     build_cmd.add_argument("--max-pages", type=int, default=200)
     build_cmd.set_defaults(func=cmd_build_silver)
+
+    layer1 = add("build-layer1", "синтетический набор слоя 1 из текста НК")
+    layer1.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=SILVER_DIR)
+    layer1.add_argument("--rdk", type=int, default=None, help="редакция; по умолчанию последняя")
+    layer1.set_defaults(func=cmd_build_layer1)
 
     args = parser.parse_args(argv)
     logging.basicConfig(
