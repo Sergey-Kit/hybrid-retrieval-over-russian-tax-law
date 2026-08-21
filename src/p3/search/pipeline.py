@@ -46,11 +46,26 @@ class Retrieval:
         dense = encoder = None
         if encoder_name:
             stem = (corpus or "nk1.jsonl").replace(".jsonl", "")
-            path = chunks_dir / f"dense-{stem}-{encoder_name}.npz"
-            if not path.exists():
-                path = chunks_dir / f"dense-{encoder_name}.npz"
+            # Историческое имя для корпуса части первой; для остальных — с основой.
+            path = chunks_dir / (
+                f"dense-{encoder_name}.npz" if stem == "nk1"
+                else f"dense-{stem}-{encoder_name}.npz"
+            )
             if path.exists():
                 dense = DenseIndex.load(path)
+                # Запасного варианта здесь быть не должно. Раньше при отсутствии
+                # файла подставлялись векторы другого корпуса: 1906 векторов
+                # части первой для корпуса из 9667 чанков. Ошибки не возникало,
+                # dense-канал просто не мог вернуть ничего за пределами части
+                # первой, а метрики выходили правдоподобные.
+                missing = set(dense.doc_ids) - set(store.by_chunk_id)
+                if missing or len(dense.doc_ids) != len(store.by_chunk_id):
+                    raise ValueError(
+                        f"векторы не соответствуют корпусу: {len(dense.doc_ids)} векторов "
+                        f"против {len(store.by_chunk_id)} чанков"
+                        + (f", {len(missing)} идентификаторов не найдено" if missing else "")
+                        + f". Пересоберите: p3 build-embeddings --corpus {corpus or 'nk1.jsonl'}"
+                    )
                 encoder = DenseEncoder(name=encoder_name)
         return cls(store=store, bm25=bm25, dense=dense, encoder=encoder)
 

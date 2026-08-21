@@ -1,3 +1,6 @@
+import json
+
+import pytest
 """RRF-слияние, one-hop раскрытие ссылок, приведение к статьям."""
 from p3.search.evaluate import (
     EvalQuery, evaluate, load_queries, ndcg_at_k, reachable, recall_at_k, reciprocal_rank,
@@ -178,3 +181,22 @@ def test_expansion_contribution_counts_gold_reached_only_by_expansion():
     report = expansion_contribution(retrieval, queries, mode="bm25")
     assert report["gold_reached_only_via_expansion"] == 1
     assert report["share_only_via_expansion"] == 1.0
+
+
+def test_mismatched_vectors_are_rejected(tmp_path):
+    """Раньше при отсутствии файла подставлялись векторы другого корпуса, и
+    dense-канал молча возвращал только его часть."""
+    import numpy as np
+    from p3.search.dense import DenseIndex
+    from p3.search.pipeline import Retrieval
+
+    chunks_dir = tmp_path
+    (chunks_dir / "small.jsonl").write_text(
+        "\n".join(json.dumps(chunk(f"c{i}", f"nk1/st{i}/p1")) for i in range(3)) + "\n",
+        encoding="utf-8",
+    )
+    DenseIndex(doc_ids=["c0"], vectors=np.zeros((1, 4), dtype=np.float32)).save(
+        chunks_dir / "dense-small-user-bge-m3.npz"
+    )
+    with pytest.raises(ValueError, match="не соответствуют корпусу"):
+        Retrieval.load(chunks_dir, encoder_name="user-bge-m3", corpus="small.jsonl")
