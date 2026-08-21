@@ -86,13 +86,21 @@ class Retrieval:
         else:
             raise ValueError(f"неизвестная конфигурация {mode!r}")
 
-        if expand:
-            hits = one_hop_expansion(hits, self.store)
-
         if mode == "hybrid+rerank":
             if self.reranker is None:
                 self.reranker = Reranker()
-            hits = self.reranker.rerank(query, hits[:RERANK_INPUT], self.store, top_k=RERANK_OUTPUT)
+            # Кандидаты для реранкера: top-N слияния плюс раскрытые ссылки.
+            # Раскрывать после отсечения нельзя: слияние даёт под сотню
+            # результатов, раскрытые дописываются в конец и до реранкера просто
+            # не доходят — измерение вклада one-hop тогда структурно неспособно
+            # что-либо показать и всегда даёт ноль.
+            candidates = hits[:RERANK_INPUT]
+            if expand:
+                candidates = one_hop_expansion(candidates, self.store)
+            return self.reranker.rerank(query, candidates, self.store, top_k=RERANK_OUTPUT)
+
+        if expand:
+            hits = one_hop_expansion(hits, self.store)
         return hits
 
 
@@ -123,9 +131,9 @@ def expansion_contribution(
     retrieval: "Retrieval",
     queries,
     *,
-    mode: str = "hybrid",
+    mode: str = "hybrid+rerank",
     level: str = "article",
-    top_k: int = 20,
+    top_k: int = 8,
 ) -> dict:
     """Доля запросов, где эталон достался **только** через раскрытие ссылки.
 
@@ -133,6 +141,11 @@ def expansion_contribution(
     результат: детерминированный обход графа закрывает класс ошибок, который
     эмбеддер не закроет никогда — основание не исполнять требование выражено
     отсылкой, а не словами.
+
+    Меряется на **финальном контексте** (top-8 после реранкера), а не на top-20
+    слияния. Раскрытые чанки по спеке ставятся в конец, а слияние возвращает под
+    сотню результатов — на top-20 они не попадают никогда, и измерение показывало
+    бы ноль независимо от того, помогает раскрытие или нет.
     """
     only_via_expansion = 0
     helped_at_all = 0
