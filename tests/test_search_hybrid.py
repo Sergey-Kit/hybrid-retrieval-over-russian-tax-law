@@ -146,3 +146,12 @@ def test_load_queries_from_rows():
     }])
     assert query.gold_articles == frozenset({"nk1/st88"})
     assert query.gold_norms == frozenset({"nk1/st88/p3"})
+
+
+def test_latency_is_measured():
+    """ТЗ §7 требует колонку латентности."""
+    queries = [EvalQuery(f"q{i}", "…", frozenset({"nk1/st88"}), frozenset(), "t", "s")
+               for i in range(5)]
+    report = evaluate(queries, lambda q: ["nk1/st88"]).as_dict()
+    assert report["latency_ms_median"] >= 0.0
+    assert report["latency_ms_p90"] >= report["latency_ms_median"]

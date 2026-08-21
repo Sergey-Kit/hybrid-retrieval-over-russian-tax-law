@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
@@ -81,6 +82,12 @@ class Metrics:
     hit_at_20: float
     ndcg_at_10: float
     mrr: float
+    #: Медиана и 90-й перцентиль времени одного запроса, миллисекунды.
+    #: ТЗ §7 требует эту колонку, но числа здесь — **сравнение конфигураций
+    #: между собой на этой машине**, а не абсолютные показатели продукта:
+    #: целевое железо P5 — 24 ГБ GPU, здесь 4 ГБ и CPU без AVX2.
+    latency_ms_median: float = 0.0
+    latency_ms_p90: float = 0.0
 
     def as_dict(self) -> dict:
         return {
@@ -89,6 +96,8 @@ class Metrics:
             "hit@20": round(self.hit_at_20, 4),
             "nDCG@10": round(self.ndcg_at_10, 4),
             "MRR": round(self.mrr, 4),
+            "latency_ms_median": round(self.latency_ms_median, 1),
+            "latency_ms_p90": round(self.latency_ms_p90, 1),
         }
 
 
@@ -106,17 +115,28 @@ def evaluate(
     if not queries:
         return Metrics(0, 0.0, 0.0, 0.0, 0.0)
 
-    recalls, hits, ndcgs, rrs = [], [], [], []
+    recalls, hits, ndcgs, rrs, timings = [], [], [], [], []
     for query in queries:
         gold = query.gold_articles if level == "article" else query.gold_norms
+        started = time.perf_counter()
         retrieved = run(query)
+        timings.append((time.perf_counter() - started) * 1000)
         recalls.append(recall_at_k(retrieved, gold, 20))
         hits.append(hit_at_k(retrieved, gold, 20))
         ndcgs.append(ndcg_at_k(retrieved, gold, 10))
         rrs.append(reciprocal_rank(retrieved, gold))
 
     n = len(queries)
-    return Metrics(n, sum(recalls) / n, sum(hits) / n, sum(ndcgs) / n, sum(rrs) / n)
+    ordered = sorted(timings)
+    return Metrics(
+        n,
+        sum(recalls) / n,
+        sum(hits) / n,
+        sum(ndcgs) / n,
+        sum(rrs) / n,
+        latency_ms_median=ordered[n // 2],
+        latency_ms_p90=ordered[min(int(n * 0.9), n - 1)],
+    )
 
 
 def by_slice(
