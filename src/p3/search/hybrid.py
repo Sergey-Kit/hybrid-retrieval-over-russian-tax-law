@@ -138,16 +138,31 @@ class Reranker:
             pairs.append((query, chunk["text_dense"]))
             kept.append(hit)
 
-        scores: list[float] = []
-        for start in range(0, len(pairs), self.batch_size):
-            batch = pairs[start : start + self.batch_size]
+        # Батчи формируются из документов близкой длины. Паддинг идёт до самого
+        # длинного в батче, а кандидаты различаются от десятков токенов до сотен:
+        # при произвольном порядке 52% вычислений уходило в заполнитель.
+        # Сортировка не меняет ни одного результата — только состав батчей;
+        # проверено сравнением с батчем 1, где паддинга нет вовсе: 5 из 5 запросов
+        # дали идентичный порядок выдачи.
+        #
+        # Замер на реальном пути: 23.1 -> 15.4 с/запрос. Батч больше 8 на 4 ГБ
+        # видеопамяти **замедляет** (16 -> 18.2 с, 32 -> 25.4 с) — длинные
+        # последовательности начинают давить на память. Микробенчмарк одних лишь
+        # прямых проходов показывал обратное, потому что не считал токенизацию
+        # тридцати документов на CPU без AVX2.
+        order = sorted(range(len(pairs)), key=lambda i: len(pairs[i][1]))
+        scores: list[float] = [0.0] * len(pairs)
+        for start in range(0, len(order), self.batch_size):
+            indices = order[start : start + self.batch_size]
+            batch = [pairs[i] for i in indices]
             encoded = self._tokenizer(
                 [q for q, _ in batch], [d for _, d in batch],
                 padding=True, truncation=True, max_length=1024, return_tensors="pt",
             ).to(self.device)
             with torch.no_grad():
                 logits = self._model(**encoded).logits.view(-1).float()
-            scores.extend(logits.cpu().tolist())
+            for position, score in zip(indices, logits.cpu().tolist()):
+                scores[position] = score
 
         ranked = sorted(zip(kept, scores), key=lambda item: -item[1])
         return [Hit(h.chunk_id, s, expanded=h.expanded, sources=h.sources) for h, s in ranked[:top_k]]
