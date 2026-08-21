@@ -170,6 +170,16 @@ def parse_articles(html: str, *, part: int = 1, strict: bool = True) -> list[Art
             continue
 
         clause_match = _CLAUSE_RE.match(text)
+        # Номера пунктов внутри статьи уникальны по закону. Повтор номера — это
+        # не пункт, а строка таблицы: в статьях о ставках и сборах тело пункта
+        # бывает перечнем кодов вида «61 25 00; 75 00 00;», и строки начинаются
+        # с числа с точкой. Без этой проверки статья 333.45 давала несколько
+        # десятков «пунктов 2» с одинаковым идентификатором чанка.
+        if clause_match and clause_match.group("number") in {
+            c.number for c in current.clauses
+        }:
+            clause_match = None
+
         if clause_match:
             number = clause_match.group("number")
             body = text[clause_match.end():]

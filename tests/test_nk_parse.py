@@ -120,3 +120,26 @@ def test_unnumbered_lead_paragraph_kept_as_clause():
     )
     assert article.clauses[0].number is None
     assert article.clauses[0].text.startswith("К региональным")
+
+
+def test_repeated_clause_number_is_continuation_not_a_new_clause():
+    """В статьях о ставках тело пункта бывает таблицей кодов, и строки
+    начинаются с числа с точкой. Статья 333.45 давала несколько десятков
+    «пунктов 2» с одинаковым идентификатором чанка."""
+    (article,) = parse_articles(
+        '<p class="H">Статья 333.45. Ставки сборов</p>'
+        '<p>2. Ставки устанавливаются в размерах:</p>'
+        '<p>2. 61 25 00; 75 00 00;</p>'
+        '<p>2. 61 13 40; 64 18 10;</p>',
+        part=2,
+    )
+    assert [c.number for c in article.clauses] == ["2"]
+    assert "61 25 00" in article.clauses[0].text
+    assert "64 18 10" in article.clauses[0].text
+
+
+def test_distinct_clause_numbers_still_split():
+    (article,) = parse_articles(
+        '<p class="H">Статья 88. Тест</p><p>1. Первый.</p><p>2. Второй.</p>', part=1
+    )
+    assert [c.number for c in article.clauses] == ["1", "2"]
