@@ -257,10 +257,15 @@ def cmd_evaluate(args) -> None:
                 return to_articles(hits, retrieval.store) if level == "article" \
                     else to_norms(hits, retrieval.store)
 
-            entry["configurations"][mode] = evaluate(usable, run, level=level).as_dict()
+            indexed = available if level == "article" else {
+                c["norm_unit_id"] for c in retrieval.store.by_chunk_id.values()
+            }
+            entry["configurations"][mode] = evaluate(
+                usable, run, level=level, indexed=indexed
+            ).as_dict()
             if mode == "hybrid":
                 entry["by_query_type"] = by_slice(
-                    usable, run, lambda q: q.query_type, level=level
+                    usable, run, lambda q: q.query_type, level=level, indexed=indexed
                 )
                 if retrieval.dense is not None:
                     entry["one_hop_expansion"] = expansion_contribution(

@@ -29,6 +29,25 @@ def _row(name: str, m: dict) -> str:
     )
 
 
+def _ceiling_note(configurations: dict) -> list[str]:
+    """Потолок recall общий для всех конфигураций набора."""
+    ceiling = next(
+        (m.get("recall_ceiling") for m in configurations.values()
+         if m.get("recall_ceiling") is not None),
+        None,
+    )
+    if ceiling is None or ceiling >= 0.999:
+        return []
+    best = max(m["recall@20"] for m in configurations.values())
+    return [
+        "",
+        "**Потолок recall@20 на этом корпусе — {:.3f}.** Фильтр достижимости требует, чтобы в".format(ceiling),
+        "индексе была хоть одна эталонная статья, а не все, поэтому часть эталона недостижима",
+        "физически. Лучший результат {:.3f} — это **{:.0%} достижимого**, а не {:.0%} возможного.".format(
+            best, best / ceiling, best),
+    ]
+
+
 def _table(configurations: dict) -> list[str]:
     header = [
         "| Конфигурация | recall@20 | hit@20 | recall@8 | nDCG@10 | MRR | мс |",
@@ -59,14 +78,14 @@ def render(eval_path: Path, temporal_path: Path | None = None) -> str:
             "построен из решений и писем, где большинство упоминаний — статьи части второй.",
             "Метрики считаются на достижимом подмножестве, доля печатается рядом.",
             "",
-        ] + _table(block["configurations"]) + [""]
+        ] + _table(block["configurations"]) + _ceiling_note(block["configurations"]) + [""]
 
     if "layer1" in report["sets"]:
         block = report["sets"]["layer1"]
         lines += [
             "### Синтетический набор слоя 1 (эталон на уровне пункта)",
             "",
-        ] + _table(block["configurations"]) + [
+        ] + _table(block["configurations"]) + _ceiling_note(block["configurations"]) + [
             "",
             "Реранкер отдаёт top-8, поэтому его `recall@20` ограничен восемью позициями и по этой",
             "колонке несопоставим с конфигурациями, возвращающими 50. Его следует сравнивать по",

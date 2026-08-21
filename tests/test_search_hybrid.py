@@ -200,3 +200,53 @@ def test_mismatched_vectors_are_rejected(tmp_path):
     )
     with pytest.raises(ValueError, match="не соответствуют корпусу"):
         Retrieval.load(chunks_dir, encoder_name="user-bge-m3", corpus="small.jsonl")
+
+
+# --- уровне-зависимое сопоставление эталона ----------------------------
+
+def test_article_level_gold_matched_by_any_of_its_clauses():
+    """Эталон вида ['nk1/st93/p3', 'nk1/st6.1'] иначе не может совпасть
+    наполовину никогда: чанка nk1/st6.1 не существует, есть только пункты."""
+    gold = frozenset({"nk1/st93/p3", "nk1/st6.1"})
+    assert recall_at_k(["nk1/st93/p3", "nk1/st6.1/p6"], gold, 20) == 1.0
+
+
+def test_prefix_match_does_not_fire_on_similar_numbers():
+    """st93 не должна совпадать с st931."""
+    assert recall_at_k(["nk1/st931/p1"], frozenset({"nk1/st93"}), 20) == 0.0
+
+
+def test_clause_gold_not_satisfied_by_the_article():
+    """Обратное направление не работает: пункт конкретнее статьи."""
+    assert recall_at_k(["nk1/st93"], frozenset({"nk1/st93/p3"}), 20) == 0.0
+
+
+def test_hit_and_rr_use_the_same_matching():
+    from p3.search.evaluate import hit_at_k
+    gold = frozenset({"nk1/st6.1"})
+    assert hit_at_k(["nk1/st6.1/p6"], gold, 20) == 1.0
+    assert reciprocal_rank(["x", "nk1/st6.1/p6"], gold) == 0.5
+
+
+# --- потолок recall ----------------------------------------------------
+
+def test_ceiling_reflects_gold_absent_from_the_index():
+    """Фильтр достижимости требует хоть одну эталонную статью, а не все:
+    у запроса с тремя эталонами при одном проиндексированном recall не может
+    превысить 1/3, и без этой цифры результат выглядит хуже, чем есть."""
+    queries = [EvalQuery("q", "…", frozenset({"nk1/st88", "nk2/st220", "nk2/st346"}),
+                         frozenset(), "t", "s")]
+    report = evaluate(queries, lambda q: ["nk1/st88"], indexed={"nk1/st88"}).as_dict()
+    assert report["recall_ceiling"] == pytest.approx(1 / 3, abs=1e-3)
+    assert report["recall@20"] == pytest.approx(1 / 3, abs=1e-3)
+    assert report["recall_share_of_achievable"] == 1.0
+
+
+def test_ceiling_is_one_when_all_gold_is_indexed():
+    queries = [EvalQuery("q", "…", frozenset({"nk1/st88"}), frozenset(), "t", "s")]
+    assert evaluate(queries, lambda q: [], indexed={"nk1/st88"}).as_dict()["recall_ceiling"] == 1.0
+
+
+def test_ceiling_defaults_to_one_without_index_information():
+    queries = [EvalQuery("q", "…", frozenset({"nk1/st88"}), frozenset(), "t", "s")]
+    assert evaluate(queries, lambda q: []).as_dict()["recall_ceiling"] == 1.0
