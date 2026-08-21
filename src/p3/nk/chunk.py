@@ -192,9 +192,11 @@ def _build(
             clause_label += f", подпункт {subclause}"
 
     prefix = _hierarchy_prefix(article, clause_label)
-    reference = f"Статья {article.number}"
-    if clause_number:
-        reference += f", пункт {clause_number}"
+    # Порядок канонический — «пунктом 3 статьи 88», а не «статья 88, пункт 3»:
+    # нормализатор ссылок требует, чтобы квалификатор стоял перед статьёй, иначе
+    # из заголовка выйдет токен уровня статьи, и запрос «п. 3 ст. 88» его не найдёт.
+    reference = f"пункт {clause_number} статьи {article.number}" if clause_number \
+        else f"статья {article.number}"
 
     repealed = (clause.is_repealed if clause else article.is_repealed) or article.is_repealed
 

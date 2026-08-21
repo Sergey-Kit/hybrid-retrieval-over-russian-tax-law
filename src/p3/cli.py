@@ -7,12 +7,13 @@ import json
 import logging
 import sys
 
-from p3.config import NALOG, PRAVO, PUBLICATION, SILVER_DIR
+from p3.config import DATA_DIR, NALOG, PRAVO, PUBLICATION, SILVER_DIR
 from p3.fetch import PoliteFetcher
 from p3.netcheck import PreflightError, preflight
 from p3.raw_store import RawStore
 from p3.silver.build import build, summarize, write_jsonl
 from p3.silver.collect import collect_decisions, collect_letters
+from p3.nk.chunk import chunk_articles
 from p3.nk.parse import parse_articles
 from p3.silver.layer1 import build_layer1_pairs, verify as verify_layer1
 from p3.sources.ips import NK_PART_1, NK_PART_2, IpsClient
@@ -157,6 +158,33 @@ def cmd_build_silver(args) -> None:
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 
+def cmd_build_chunks(args) -> None:
+    """ETL: разобранный НК ч.1 → чанки по спеке чанкинга."""
+    client = IpsClient(PoliteFetcher(RawStore(), offline=True))
+    editions = client.editions(NK_PART_1.nd)
+    rdk = args.rdk if args.rdk is not None else max(e.rdk for e in editions)
+    label = next((e.label for e in editions if e.rdk == rdk), None)
+
+    articles = parse_articles(client.full_text_html(NK_PART_1.nd, rdk), part=1)
+    chunks = chunk_articles(articles, version_no=rdk, amended_by=label)
+
+    out = args.out / "nk1.jsonl"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8") as fh:
+        for chunk in chunks:
+            fh.write(json.dumps(chunk.as_payload(), ensure_ascii=False, sort_keys=True) + "\n")
+
+    refs = sum(len(c.refs_out) for c in chunks)
+    print(json.dumps({
+        "edition": {"rdk": rdk, "label": label},
+        "articles": len(articles),
+        "chunks": len(chunks),
+        "refs_out": refs,
+        "repealed_chunks": sum(1 for c in chunks if c.status == "repealed"),
+        "out": str(out),
+    }, ensure_ascii=False, indent=2))
+
+
 def cmd_build_layer1(args) -> None:
     """Синтетический набор слоя 1 из разобранного текста НК ч.1."""
     fetcher = PoliteFetcher(RawStore(), offline=True)
@@ -222,6 +250,11 @@ def main(argv: list[str] | None = None) -> None:
     build_cmd.add_argument("--seed", type=int, default=42)
     build_cmd.add_argument("--max-pages", type=int, default=200)
     build_cmd.set_defaults(func=cmd_build_silver)
+
+    chunks_cmd = add("build-chunks", "ETL: НК ч.1 → чанки")
+    chunks_cmd.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "chunks")
+    chunks_cmd.add_argument("--rdk", type=int, default=None)
+    chunks_cmd.set_defaults(func=cmd_build_chunks)
 
     layer1 = add("build-layer1", "синтетический набор слоя 1 из текста НК")
     layer1.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=SILVER_DIR)

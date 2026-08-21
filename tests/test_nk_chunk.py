@@ -110,9 +110,12 @@ def test_prefix_carries_full_hierarchy():
     assert "Пункт 3" in prefix
 
 
-def test_title_field_is_separate():
+def test_title_field_uses_canonical_citation_order():
+    """«пункт 3 статьи 88», а не «статья 88, пункт 3»: нормализатор ссылок
+    требует квалификатор перед статьёй, иначе из заголовка выйдет токен уровня
+    статьи и запрос «п. 3 ст. 88» его не найдёт."""
     (chunk,) = chunk_article(article([Clause("3", long_text(200))]))
-    assert chunk.title_bm25 == "Камеральная налоговая проверка Статья 88, пункт 3"
+    assert chunk.title_bm25 == "Камеральная налоговая проверка пункт 3 статьи 88"
 
 
 def test_dense_uses_the_spec_separator():

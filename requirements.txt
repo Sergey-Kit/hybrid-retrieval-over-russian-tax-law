@@ -3,3 +3,4 @@ requests==2.32.3
 lxml==5.3.0
 beautifulsoup4==4.12.3
 pytest==8.3.3
+pymorphy3==2.0.4
