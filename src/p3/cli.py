@@ -218,7 +218,9 @@ def cmd_build_embeddings(args) -> None:
 def cmd_evaluate(args) -> None:
     """Таблица четырёх конфигураций из ТЗ §7 с разрезами."""
     from p3.search.evaluate import by_slice, evaluate, load_queries, reachable
-    from p3.search.pipeline import Retrieval, indexed_articles, to_articles, to_norms
+    from p3.search.pipeline import (
+        Retrieval, expansion_contribution, indexed_articles, to_articles, to_norms,
+    )
 
     retrieval = Retrieval.load(args.chunks, encoder_name=args.encoder)
     available = indexed_articles(retrieval.store)
@@ -258,6 +260,10 @@ def cmd_evaluate(args) -> None:
                 entry["by_query_type"] = by_slice(
                     usable, run, lambda q: q.query_type, level=level
                 )
+                if retrieval.dense is not None:
+                    entry["one_hop_expansion"] = expansion_contribution(
+                        retrieval, usable, level=level
+                    )
         report["sets"][name] = entry
 
     out = args.out

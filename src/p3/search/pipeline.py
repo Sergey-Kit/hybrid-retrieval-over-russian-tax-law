@@ -117,3 +117,43 @@ def to_norms(hits: list[Hit], store: ChunkStore) -> list[str]:
 
 def indexed_articles(store: ChunkStore) -> set[str]:
     return {a for a in (store.article_of(c) for c in store.by_chunk_id) if a}
+
+
+def expansion_contribution(
+    retrieval: "Retrieval",
+    queries,
+    *,
+    mode: str = "hybrid",
+    level: str = "article",
+    top_k: int = 20,
+) -> dict:
+    """Доля запросов, где эталон достался **только** через раскрытие ссылки.
+
+    Требование ТЗ §7 отдельной строкой. Если доля заметна, это самостоятельный
+    результат: детерминированный обход графа закрывает класс ошибок, который
+    эмбеддер не закроет никогда — основание не исполнять требование выражено
+    отсылкой, а не словами.
+    """
+    only_via_expansion = 0
+    helped_at_all = 0
+    for query in queries:
+        gold = query.gold_articles if level == "article" else query.gold_norms
+        plain = retrieval.run(query.query, mode=mode, expand=False)
+        expanded = retrieval.run(query.query, mode=mode, expand=True)
+
+        project = to_articles if level == "article" else to_norms
+        before = set(project(plain, retrieval.store)[:top_k])
+        after = set(project(expanded, retrieval.store)[:top_k])
+
+        if gold & after and not (gold & before):
+            only_via_expansion += 1
+        if (gold & after) - (gold & before):
+            helped_at_all += 1
+
+    total = len(queries) or 1
+    return {
+        "queries": len(queries),
+        "gold_reached_only_via_expansion": only_via_expansion,
+        "share_only_via_expansion": round(only_via_expansion / total, 4),
+        "queries_where_expansion_added_gold": helped_at_all,
+    }

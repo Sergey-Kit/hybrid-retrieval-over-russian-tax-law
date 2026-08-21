@@ -155,3 +155,26 @@ def test_latency_is_measured():
     report = evaluate(queries, lambda q: ["nk1/st88"]).as_dict()
     assert report["latency_ms_median"] >= 0.0
     assert report["latency_ms_p90"] >= report["latency_ms_median"]
+
+
+def test_expansion_contribution_counts_gold_reached_only_by_expansion():
+    """Требование ТЗ §7: вклад one-hop измеряется отдельной цифрой."""
+    from p3.search.bm25 import build_index
+    from p3.search.pipeline import Retrieval, expansion_contribution
+
+    chunks = [
+        chunk("c1", "nk1/st88/p3", refs=[("nk1/st93.1", "exception")]),
+        chunk("c2", "nk1/st93.1"),
+    ]
+    chunks[0]["text_bm25"] = "камеральная проверка пояснения"
+    chunks[0]["title_bm25"] = ""
+    chunks[1]["text_bm25"] = "совершенно иной предмет регулирования"
+    chunks[1]["title_bm25"] = ""
+    store = ChunkStore.from_chunks(chunks)
+    retrieval = Retrieval(store=store, bm25=build_index(chunks))
+
+    queries = [EvalQuery("q", "камеральная проверка пояснения",
+                         frozenset({"nk1/st93.1"}), frozenset(), "t", "s")]
+    report = expansion_contribution(retrieval, queries, mode="bm25")
+    assert report["gold_reached_only_via_expansion"] == 1
+    assert report["share_only_via_expansion"] == 1.0
