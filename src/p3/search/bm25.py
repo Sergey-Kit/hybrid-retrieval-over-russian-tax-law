@@ -91,11 +91,20 @@ class Bm25fIndex:
         # Вариант BM25 с гарантированно положительным IDF.
         return math.log(1 + (n - df + 0.5) / (df + 0.5))
 
-    def search(self, query: str, top_k: int = 50) -> list[tuple[str, float]]:
+    def search(
+        self,
+        query: str,
+        top_k: int = 50,
+        allowed: set[str] | None = None,
+    ) -> list[tuple[str, float]]:
         terms = tokenize(query)
         if not terms or not self.doc_ids:
             return []
 
+        permitted = (
+            None if allowed is None
+            else {i for i, doc_id in enumerate(self.doc_ids) if doc_id in allowed}
+        )
         scores: dict[int, float] = defaultdict(float)
         for term in set(terms):
             posting = self.postings.get(term)
@@ -103,6 +112,8 @@ class Bm25fIndex:
                 continue
             idf = self._idf(term)
             for index, weighted_tf in posting.items():
+                if permitted is not None and index not in permitted:
+                    continue
                 # Насыщение применяется к уже нормированной сумме по полям.
                 scores[index] += idf * weighted_tf / (self.k1 + weighted_tf)
 

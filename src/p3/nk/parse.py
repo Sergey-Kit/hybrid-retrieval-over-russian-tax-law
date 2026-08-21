@@ -103,8 +103,24 @@ class Article:
         return "\n".join(clause.text for clause in self.clauses)
 
 
-def parse_articles(html: str, *, part: int = 1) -> list[Article]:
-    """Разобрать печатную версию документа в список статей с пунктами."""
+class UnsupportedMarkupError(RuntimeError):
+    """Документ непустой, но ни одной статьи не распознано."""
+
+
+#: Ниже этого объёма текста пустой результат — не аномалия, а норма (заглушка,
+#: фрагмент, тестовая строка). Выше — почти наверняка чужая разметка.
+_MIN_TEXT_FOR_GUARD = 50_000
+
+
+def parse_articles(html: str, *, part: int = 1, strict: bool = True) -> list[Article]:
+    """Разобрать печатную версию документа в список статей с пунктами.
+
+    `strict` включает guard на чужую разметку. Редакции ИПС до примерно 2020 года
+    свёрстаны иначе: весь документ идёт сплошным текстом в считанных абзацах, и
+    заголовки статей ничем не выделены. На таком входе разбор возвращал пустой
+    список — документ на полтора мегабайта превращался в ноль статей, и заметить
+    это можно было только по счётчику. Теперь такой случай падает.
+    """
     html = expand_superscripts(_SCRIPT_RE.sub(" ", html))
 
     articles: list[Article] = []
@@ -175,5 +191,12 @@ def parse_articles(html: str, *, part: int = 1) -> list[Article]:
     for article in articles:
         if article.clauses and all(clause.is_repealed for clause in article.clauses):
             article.is_repealed = True
+
+    if strict and not articles and len(html) > _MIN_TEXT_FOR_GUARD:
+        raise UnsupportedMarkupError(
+            f"документ на {len(html)} символов не дал ни одной статьи — "
+            "скорее всего это старая вёрстка ИПС, где текст идёт сплошняком "
+            "и заголовки статей не размечены"
+        )
 
     return articles

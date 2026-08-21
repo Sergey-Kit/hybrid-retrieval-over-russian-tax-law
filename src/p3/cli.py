@@ -191,9 +191,9 @@ def cmd_build_embeddings(args) -> None:
 
     from p3.search.dense import DEFAULT_ENCODER, DenseEncoder, DenseIndex
 
-    path = args.chunks / "nk1.jsonl"
+    path = args.chunks / args.corpus
     chunks = [json.loads(line) for line in path.open(encoding="utf-8")]
-    print(f"чанков: {len(chunks)}; энкодер: {args.encoder}")
+    print(f"чанков: {len(chunks)}; энкодер: {args.encoder}", flush=True)
 
     encoder = DenseEncoder(name=args.encoder, batch_size=args.batch_size)
     texts = [c["text_dense"] for c in chunks]
@@ -203,7 +203,9 @@ def cmd_build_embeddings(args) -> None:
     elapsed = time.time() - started
 
     index = DenseIndex(doc_ids=[c["chunk_id"] for c in chunks], vectors=vectors)
-    out = args.chunks / f"dense-{args.encoder}.npz"
+    stem = args.corpus.replace(".jsonl", "")
+    out = args.chunks / (f"dense-{args.encoder}.npz" if stem == "nk1"
+                         else f"dense-{stem}-{args.encoder}.npz")
     index.save(out)
     print(json.dumps({
         "encoder": args.encoder,
@@ -269,6 +271,130 @@ def cmd_evaluate(args) -> None:
     out = args.out
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+
+
+#: Редакции ч.1 для темпорального среза. Отобраны по дате (rdk не хронологичен)
+#: и только из диапазона, где ИПС отдаёт современную вёрстку — примерно с 2019.
+TEMPORAL_EDITIONS = (144, 212, 197, 236, 248)
+
+
+def cmd_build_temporal(args) -> None:
+    """ETL с версиями: несколько редакций ч.1 → чанки с интервалами действия."""
+    from p3.nk.temporal import (
+        EditionSnapshot, apply_temporal_fields, build_versions, deduplicate,
+        parse_ru_date, summarize as summarize_versions,
+    )
+
+    client = IpsClient(PoliteFetcher(RawStore(), offline=True))
+    editions = {e.rdk: e for e in client.editions(NK_PART_1.nd)}
+    rdks = [int(x) for x in args.editions.split(",")] if args.editions else list(TEMPORAL_EDITIONS)
+
+    parsed, snapshots = {}, []
+    for rdk in rdks:
+        articles = parse_articles(client.full_text_html(NK_PART_1.nd, rdk), part=1)
+        parsed[rdk] = articles
+        snapshots.append(EditionSnapshot(
+            rdk=rdk,
+            edition_date=parse_ru_date(editions[rdk].date),
+            texts={c.norm_unit_id(a.norm_unit_id): c.text for a in articles for c in a.clauses},
+        ))
+        print(f"  rdk={rdk} {editions[rdk].date}: статей {len(articles)}")
+
+    versions = build_versions(snapshots)
+
+    all_chunks: list[dict] = []
+    for rdk in rdks:
+        chunks = [c.as_payload() for c in chunk_articles(
+            parsed[rdk], version_no=rdk, amended_by=editions[rdk].label
+        )]
+        all_chunks.extend(apply_temporal_fields(chunks, versions, rdk))
+    unique = deduplicate(all_chunks)
+
+    out = args.out / "nk1-temporal.jsonl"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8") as fh:
+        for chunk in sorted(unique, key=lambda c: c["chunk_id"]):
+            fh.write(json.dumps(chunk, ensure_ascii=False, sort_keys=True) + "\n")
+
+    print(json.dumps({
+        "editions": rdks,
+        "versions": summarize_versions(versions),
+        "chunks_before_dedup": len(all_chunks),
+        "chunks": len(unique),
+        "out": str(out),
+    }, ensure_ascii=False, indent=2))
+
+
+def cmd_evaluate_temporal(args) -> None:
+    """Синтетический темпоральный тест: точность выбора редакции и цена фильтра."""
+    from p3.nk.temporal import (
+        EditionSnapshot, build_versions, parse_ru_date, to_int_date,
+    )
+    from p3.search.evaluate import evaluate, load_queries
+    from p3.search.pipeline import Retrieval, to_norms, to_versions
+    from p3.silver.temporal_set import build_temporal_cases, temporal_accuracy
+    import datetime
+
+    client = IpsClient(PoliteFetcher(RawStore(), offline=True))
+    editions = {e.rdk: e for e in client.editions(NK_PART_1.nd)}
+    rdks = [int(x) for x in args.editions.split(",")] if args.editions else list(TEMPORAL_EDITIONS)
+
+    snapshots = []
+    for rdk in rdks:
+        articles = parse_articles(client.full_text_html(NK_PART_1.nd, rdk), part=1)
+        snapshots.append(EditionSnapshot(
+            rdk=rdk,
+            edition_date=parse_ru_date(editions[rdk].date),
+            texts={c.norm_unit_id(a.norm_unit_id): c.text for a in articles for c in a.clauses},
+        ))
+    versions = build_versions(snapshots)
+
+    retrieval = Retrieval.load(
+        args.chunks, encoder_name=args.encoder, corpus="nk1-temporal.jsonl"
+    )
+    if retrieval.dense is None:
+        print("нет векторов темпорального корпуса — считаю только по BM25")
+
+    cases = build_temporal_cases(versions)
+    print(f"темпоральных запросов: {len(cases)} по {len({c.pair.source_id.split('@')[0] for c in cases})} нормам")
+
+    retrieved: dict[str, list[str]] = {}
+    for case in cases:
+        hits = retrieval.run(case.pair.query, mode=args.mode, as_of=case.as_of)
+        retrieved[case.pair.query_id] = to_versions(hits, retrieval.store)
+    accuracy = temporal_accuracy(cases, retrieved)
+
+    # Цена фильтра: recall на слое 1 без даты и с датой «сегодня».
+    layer1 = load_queries(
+        json.loads(line) for line in (args.silver / "layer1.jsonl").open(encoding="utf-8")
+    )
+    today = to_int_date(datetime.date.today())
+
+    def run_plain(query):
+        return to_norms(retrieval.run(query.query, mode=args.mode), retrieval.store)
+
+    def run_filtered(query):
+        return to_norms(retrieval.run(query.query, mode=args.mode, as_of=today), retrieval.store)
+
+    without = evaluate(layer1, run_plain, level="norm").as_dict()
+    with_filter = evaluate(layer1, run_filtered, level="norm").as_dict()
+    drop = round((without["recall@20"] - with_filter["recall@20"]) * 100, 2)
+
+    report = {
+        "mode": args.mode,
+        "editions": rdks,
+        "temporal_accuracy": accuracy,
+        "filter_cost": {
+            "recall@20_without_filter": without["recall@20"],
+            "recall@20_with_filter": with_filter["recall@20"],
+            "drop_percentage_points": drop,
+            "criterion_max_drop_pp": 5.0,
+            "criterion_met": drop <= 5.0,
+        },
+    }
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 
@@ -347,6 +473,7 @@ def main(argv: list[str] | None = None) -> None:
     emb.add_argument("--chunks", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "chunks")
     emb.add_argument("--encoder", default=None)
     emb.add_argument("--batch-size", type=int, default=8)
+    emb.add_argument("--corpus", default="nk1.jsonl")
     emb.set_defaults(func=cmd_build_embeddings)
 
     ev = add("evaluate", "таблица конфигураций поиска")
@@ -357,6 +484,20 @@ def main(argv: list[str] | None = None) -> None:
     ev.add_argument("--expand", action="store_true", help="включить one-hop раскрытие ссылок")
     ev.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "eval" / "report.json")
     ev.set_defaults(func=cmd_evaluate)
+
+    temporal = add("build-temporal", "ETL с версиями: редакции ч.1 → чанки с интервалами")
+    temporal.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "chunks")
+    temporal.add_argument("--editions", default=None, help="список rdk через запятую")
+    temporal.set_defaults(func=cmd_build_temporal)
+
+    tev = add("evaluate-temporal", "синтетический темпоральный тест")
+    tev.add_argument("--chunks", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "chunks")
+    tev.add_argument("--silver", type=lambda p: __import__("pathlib").Path(p), default=SILVER_DIR)
+    tev.add_argument("--encoder", default=None)
+    tev.add_argument("--editions", default=None)
+    tev.add_argument("--mode", default="hybrid", choices=["bm25", "dense", "hybrid"])
+    tev.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "eval" / "temporal.json")
+    tev.set_defaults(func=cmd_evaluate_temporal)
 
     layer1 = add("build-layer1", "синтетический набор слоя 1 из текста НК")
     layer1.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=SILVER_DIR)

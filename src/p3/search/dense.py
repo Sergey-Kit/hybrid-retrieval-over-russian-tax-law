@@ -133,12 +133,32 @@ class DenseIndex:
     doc_ids: list[str]
     vectors: np.ndarray
 
-    def search(self, query_vector: np.ndarray, top_k: int = 50) -> list[tuple[str, float]]:
+    def search(
+        self,
+        query_vector: np.ndarray,
+        top_k: int = 50,
+        allowed: set[str] | None = None,
+    ) -> list[tuple[str, float]]:
+        """Точный перебор. `allowed` — фильтр по метаданным **до** поиска.
+
+        Спека §6.3 требует фильтровать до, а не после: иначе кандидаты,
+        отсечённые по дате, съедают места в top-k, и потеря незаметна на
+        метриках, где темпоральных запросов нет.
+        """
         if not self.doc_ids:
             return []
         scores = self.vectors @ query_vector
+        if allowed is not None:
+            mask = np.array([doc_id in allowed for doc_id in self.doc_ids])
+            scores = np.where(mask, scores, -np.inf)
+            if not mask.any():
+                return []
         order = np.argsort(-scores)[:top_k]
-        return [(self.doc_ids[i], float(scores[i])) for i in order]
+        return [
+            (self.doc_ids[i], float(scores[i]))
+            for i in order
+            if np.isfinite(scores[i])
+        ]
 
     def save(self, path) -> None:
         np.savez_compressed(path, doc_ids=np.array(self.doc_ids), vectors=self.vectors)

@@ -26,6 +26,8 @@ class Retrieval:
     #: Кэш векторов запросов: конфигурации dense/hybrid/hybrid+rerank прогоняют
     #: один и тот же набор запросов, и без кэша каждый кодируется трижды.
     _query_vectors: dict = field(default_factory=dict)
+    #: Кэш множеств чанков, действующих на дату.
+    _as_of_cache: dict = field(default_factory=dict)
 
     @classmethod
     def load(
@@ -34,14 +36,19 @@ class Retrieval:
         *,
         encoder_name: str | None = None,
         field_weights: dict[str, float] | None = None,
+        corpus: str | None = None,
     ) -> "Retrieval":
-        chunks = [json.loads(line) for line in (chunks_dir / "nk1.jsonl").open(encoding="utf-8")]
+        source = chunks_dir / (corpus or "nk1.jsonl")
+        chunks = [json.loads(line) for line in source.open(encoding="utf-8")]
         store = ChunkStore.from_chunks(chunks)
         bm25 = build_index(chunks, field_weights=field_weights)
 
         dense = encoder = None
         if encoder_name:
-            path = chunks_dir / f"dense-{encoder_name}.npz"
+            stem = (corpus or "nk1.jsonl").replace(".jsonl", "")
+            path = chunks_dir / f"dense-{stem}-{encoder_name}.npz"
+            if not path.exists():
+                path = chunks_dir / f"dense-{encoder_name}.npz"
             if path.exists():
                 dense = DenseIndex.load(path)
                 encoder = DenseEncoder(name=encoder_name)
@@ -49,8 +56,28 @@ class Retrieval:
 
     # --- отдельные каналы -------------------------------------------------
 
-    def search_bm25(self, query: str, top_k: int = TOP_CANDIDATES) -> list[tuple[str, float]]:
-        return self.bm25.search(query, top_k=top_k)
+    def allowed_at(self, as_of: int | None) -> set[str] | None:
+        """Чанки, действующие на дату: `valid_from <= as_of < valid_to`.
+
+        Основной фильтр — `applies_from`, но пока он не извлечён, работаем по
+        `valid_from`; разница описана в docstring `p3.nk.temporal`.
+        """
+        if as_of is None:
+            return None
+        cached = self._as_of_cache.get(as_of)
+        if cached is None:
+            cached = {
+                chunk_id
+                for chunk_id, chunk in self.store.by_chunk_id.items()
+                if (chunk.get("valid_from") or 0) <= as_of < (chunk.get("valid_to") or 0)
+            }
+            self._as_of_cache[as_of] = cached
+        return cached
+
+    def search_bm25(
+        self, query: str, top_k: int = TOP_CANDIDATES, allowed: set[str] | None = None
+    ) -> list[tuple[str, float]]:
+        return self.bm25.search(query, top_k=top_k, allowed=allowed)
 
     def query_vector(self, query: str):
         cached = self._query_vectors.get(query)
@@ -59,10 +86,12 @@ class Retrieval:
             self._query_vectors[query] = cached
         return cached
 
-    def search_dense(self, query: str, top_k: int = TOP_CANDIDATES) -> list[tuple[str, float]]:
+    def search_dense(
+        self, query: str, top_k: int = TOP_CANDIDATES, allowed: set[str] | None = None
+    ) -> list[tuple[str, float]]:
         if self.dense is None or self.encoder is None:
             return []
-        return self.dense.search(self.query_vector(query), top_k=top_k)
+        return self.dense.search(self.query_vector(query), top_k=top_k, allowed=allowed)
 
     # --- конфигурации -----------------------------------------------------
 
@@ -73,15 +102,17 @@ class Retrieval:
         mode: str,
         expand: bool = False,
         top_k: int = TOP_CANDIDATES,
+        as_of: int | None = None,
     ) -> list[Hit]:
+        allowed = self.allowed_at(as_of)
         if mode == "bm25":
-            hits = [Hit(d, s, sources=("bm25",)) for d, s in self.search_bm25(query, top_k)]
+            hits = [Hit(d, s, sources=("bm25",)) for d, s in self.search_bm25(query, top_k, allowed)]
         elif mode == "dense":
-            hits = [Hit(d, s, sources=("dense",)) for d, s in self.search_dense(query, top_k)]
+            hits = [Hit(d, s, sources=("dense",)) for d, s in self.search_dense(query, top_k, allowed)]
         elif mode in ("hybrid", "hybrid+rerank"):
             hits = reciprocal_rank_fusion({
-                "bm25": self.search_bm25(query, top_k),
-                "dense": self.search_dense(query, top_k),
+                "bm25": self.search_bm25(query, top_k, allowed),
+                "dense": self.search_dense(query, top_k, allowed),
             })
         else:
             raise ValueError(f"неизвестная конфигурация {mode!r}")
@@ -120,6 +151,16 @@ def to_norms(hits: list[Hit], store: ChunkStore) -> list[str]:
         chunk = store.by_chunk_id.get(hit.chunk_id)
         if chunk:
             seen.setdefault(chunk["norm_unit_id"], None)
+    return list(seen)
+
+
+def to_versions(hits: list[Hit], store: ChunkStore) -> list[str]:
+    """Ранжирование чанков → ранжирование версий норм (`nk1/st88/p3@v2`)."""
+    seen: dict[str, None] = {}
+    for hit in hits:
+        chunk = store.by_chunk_id.get(hit.chunk_id)
+        if chunk and chunk.get("version_id"):
+            seen.setdefault(chunk["version_id"], None)
     return list(seen)
 
 
