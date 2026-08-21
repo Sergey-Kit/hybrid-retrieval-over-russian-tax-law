@@ -398,6 +398,16 @@ def cmd_evaluate_temporal(args) -> None:
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 
+def cmd_render_results(args) -> None:
+    """Собрать раздел результатов из файлов замеров."""
+    from p3.report import render
+
+    text = render(args.eval, args.temporal)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(text + "\n", encoding="utf-8")
+    print(text)
+
+
 def cmd_build_layer1(args) -> None:
     """Синтетический набор слоя 1 из разобранного текста НК ч.1."""
     fetcher = PoliteFetcher(RawStore(), offline=True)
@@ -498,6 +508,12 @@ def main(argv: list[str] | None = None) -> None:
     tev.add_argument("--mode", default="hybrid", choices=["bm25", "dense", "hybrid"])
     tev.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "eval" / "temporal.json")
     tev.set_defaults(func=cmd_evaluate_temporal)
+
+    rr = add("render-results", "собрать раздел результатов из замеров")
+    rr.add_argument("--eval", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "eval" / "test.json")
+    rr.add_argument("--temporal", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "eval" / "temporal.json")
+    rr.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "eval" / "RESULTS.md")
+    rr.set_defaults(func=cmd_render_results)
 
     layer1 = add("build-layer1", "синтетический набор слоя 1 из текста НК")
     layer1.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=SILVER_DIR)
