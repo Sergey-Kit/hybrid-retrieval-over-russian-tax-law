@@ -82,6 +82,11 @@ class Metrics:
     hit_at_20: float
     ndcg_at_10: float
     mrr: float
+    #: recall@8 нужен, чтобы сравнение с реранкером было честным: он отдаёт
+    #: top-8, поэтому его recall@20 ограничен восемью позициями и не
+    #: сопоставим с конфигурациями, возвращающими 50.
+    recall_at_8: float = 0.0
+    hit_at_8: float = 0.0
     #: Медиана и 90-й перцентиль времени одного запроса, миллисекунды.
     #: ТЗ §7 требует эту колонку, но числа здесь — **сравнение конфигураций
     #: между собой на этой машине**, а не абсолютные показатели продукта:
@@ -94,6 +99,8 @@ class Metrics:
             "queries": self.queries,
             "recall@20": round(self.recall_at_20, 4),
             "hit@20": round(self.hit_at_20, 4),
+            "recall@8": round(self.recall_at_8, 4),
+            "hit@8": round(self.hit_at_8, 4),
             "nDCG@10": round(self.ndcg_at_10, 4),
             "MRR": round(self.mrr, 4),
             "latency_ms_median": round(self.latency_ms_median, 1),
@@ -116,6 +123,7 @@ def evaluate(
         return Metrics(0, 0.0, 0.0, 0.0, 0.0)
 
     recalls, hits, ndcgs, rrs, timings = [], [], [], [], []
+    recalls8, hits8 = [], []
     for query in queries:
         gold = query.gold_articles if level == "article" else query.gold_norms
         started = time.perf_counter()
@@ -123,6 +131,8 @@ def evaluate(
         timings.append((time.perf_counter() - started) * 1000)
         recalls.append(recall_at_k(retrieved, gold, 20))
         hits.append(hit_at_k(retrieved, gold, 20))
+        recalls8.append(recall_at_k(retrieved, gold, 8))
+        hits8.append(hit_at_k(retrieved, gold, 8))
         ndcgs.append(ndcg_at_k(retrieved, gold, 10))
         rrs.append(reciprocal_rank(retrieved, gold))
 
@@ -134,6 +144,8 @@ def evaluate(
         sum(hits) / n,
         sum(ndcgs) / n,
         sum(rrs) / n,
+        recall_at_8=sum(recalls8) / n,
+        hit_at_8=sum(hits8) / n,
         latency_ms_median=ordered[n // 2],
         latency_ms_p90=ordered[min(int(n * 0.9), n - 1)],
     )

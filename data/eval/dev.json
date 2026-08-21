@@ -1,0 +1,108 @@
+{
+  "encoder": "user-bge-m3",
+  "indexed_articles": 275,
+  "sets": {
+    "silver_dev": {
+      "queries_total": 335,
+      "queries_reachable": 41,
+      "reachable_share": 0.122,
+      "configurations": {
+        "dense": {
+          "queries": 41,
+          "recall@20": 0.6467,
+          "hit@20": 0.7805,
+          "nDCG@10": 0.5315,
+          "MRR": 0.5864
+        },
+        "bm25": {
+          "queries": 41,
+          "recall@20": 0.6419,
+          "hit@20": 0.8049,
+          "nDCG@10": 0.4733,
+          "MRR": 0.5101
+        },
+        "hybrid": {
+          "queries": 41,
+          "recall@20": 0.6874,
+          "hit@20": 0.8537,
+          "nDCG@10": 0.5419,
+          "MRR": 0.6041
+        },
+        "hybrid+rerank": {
+          "queries": 41,
+          "recall@20": 0.6451,
+          "hit@20": 0.8293,
+          "nDCG@10": 0.5556,
+          "MRR": 0.622
+        }
+      },
+      "by_query_type": {
+        "mixed": {
+          "queries": 4,
+          "recall@20": 0.5,
+          "hit@20": 0.75,
+          "nDCG@10": 0.3899,
+          "MRR": 0.5357
+        },
+        "natural_language": {
+          "queries": 37,
+          "recall@20": 0.7077,
+          "hit@20": 0.8649,
+          "nDCG@10": 0.5583,
+          "MRR": 0.6115
+        }
+      }
+    },
+    "layer1": {
+      "queries_total": 36,
+      "queries_reachable": 36,
+      "reachable_share": 1.0,
+      "configurations": {
+        "dense": {
+          "queries": 36,
+          "recall@20": 0.7361,
+          "hit@20": 0.8056,
+          "nDCG@10": 0.5138,
+          "MRR": 0.4819
+        },
+        "bm25": {
+          "queries": 36,
+          "recall@20": 0.5833,
+          "hit@20": 0.6389,
+          "nDCG@10": 0.4855,
+          "MRR": 0.5185
+        },
+        "hybrid": {
+          "queries": 36,
+          "recall@20": 0.7639,
+          "hit@20": 0.8333,
+          "nDCG@10": 0.5998,
+          "MRR": 0.6175
+        },
+        "hybrid+rerank": {
+          "queries": 36,
+          "recall@20": 0.7361,
+          "hit@20": 0.8056,
+          "nDCG@10": 0.7035,
+          "MRR": 0.7407
+        }
+      },
+      "by_query_type": {
+        "lexical_anchor": {
+          "queries": 18,
+          "recall@20": 0.8056,
+          "hit@20": 0.8889,
+          "nDCG@10": 0.7484,
+          "MRR": 0.809
+        },
+        "natural_language": {
+          "queries": 18,
+          "recall@20": 0.7222,
+          "hit@20": 0.7778,
+          "nDCG@10": 0.4512,
+          "MRR": 0.426
+        }
+      }
+    }
+  }
+}
