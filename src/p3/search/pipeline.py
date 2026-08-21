@@ -41,7 +41,7 @@ class Retrieval:
         source = chunks_dir / (corpus or "nk1.jsonl")
         chunks = [json.loads(line) for line in source.open(encoding="utf-8")]
         store = ChunkStore.from_chunks(chunks)
-        bm25 = build_index(chunks, field_weights=field_weights)
+        bm25 = build_index(chunks, field_weights=field_weights, cache_dir=chunks_dir / "bm25-cache")
 
         dense = encoder = None
         if encoder_name:

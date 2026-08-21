@@ -14,7 +14,11 @@
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+import pathlib
+import pickle
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
@@ -121,9 +125,41 @@ class Bm25fIndex:
         return [(self.doc_ids[i], score) for i, score in ranked[:top_k]]
 
 
-def build_index(chunks, *, field_weights: dict[str, float] | None = None) -> Bm25fIndex:
-    """Индекс по чанкам. `text_bm25` — тело, `title_bm25` — заголовок."""
-    index = Bm25fIndex(field_weights=dict(field_weights or DEFAULT_FIELD_WEIGHTS))
+def _fingerprint(chunks, field_weights: dict[str, float]) -> str:
+    """Отпечаток входа: состав чанков и веса полей."""
+    digest = hashlib.sha256()
+    digest.update(json.dumps(field_weights, sort_keys=True).encode())
+    digest.update(str(len(chunks)).encode())
+    for chunk in chunks:
+        digest.update(chunk["chunk_id"].encode())
+    return digest.hexdigest()[:16]
+
+
+def build_index(
+    chunks,
+    *,
+    field_weights: dict[str, float] | None = None,
+    cache_dir: "pathlib.Path | None" = None,
+) -> Bm25fIndex:
+    """Индекс по чанкам. `text_bm25` — тело, `title_bm25` — заголовок.
+
+    С `cache_dir` индекс сохраняется на диск и переиспользуется. Сборка на
+    объединённом корпусе (9667 чанков, 1.2 млн слов) занимает десятки минут:
+    `tokenize` для каждого поля запускает разбор цитат регулярками, а в части
+    второй 32 тысячи ссылок. Без кэша каждый прогон оценки платил бы это заново,
+    а впереди сравнение трёх энкодеров — минимум три-четыре прогона.
+    """
+    weights = dict(field_weights or DEFAULT_FIELD_WEIGHTS)
+    cache_path = None
+    if cache_dir is not None:
+        cache_dir = pathlib.Path(cache_dir)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = cache_dir / f"bm25-{_fingerprint(chunks, weights)}.pkl"
+        if cache_path.exists():
+            with cache_path.open("rb") as fh:
+                return pickle.load(fh)
+
+    index = Bm25fIndex(field_weights=weights)
     for chunk in chunks:
         norm_unit_id = chunk["norm_unit_id"]
         article_id = "/".join(norm_unit_id.split("/")[:2])
@@ -139,4 +175,7 @@ def build_index(chunks, *, field_weights: dict[str, float] | None = None) -> Bm2
             },
         )
     index.finalize()
+    if cache_path is not None:
+        with cache_path.open("wb") as fh:
+            pickle.dump(index, fh, protocol=pickle.HIGHEST_PROTOCOL)
     return index

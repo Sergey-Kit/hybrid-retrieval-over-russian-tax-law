@@ -84,3 +84,30 @@ def test_top_k_respected():
     chunks = [chunk(f"c{i}", f"nk1/st{i}/p1", "текст нормы") for i in range(10)]
     index = build_index(chunks)
     assert len(index.search("текст нормы", top_k=3)) == 3
+
+
+def test_index_cache_roundtrip(tmp_path):
+    """Сборка на объединённом корпусе занимает десятки минут — без кэша каждый
+    прогон оценки платил бы это заново."""
+    chunks = [chunk("a", "nk1/st88/p3", "камеральная проверка")]
+    first = build_index(chunks, cache_dir=tmp_path)
+    cached = list(tmp_path.glob("bm25-*.pkl"))
+    assert len(cached) == 1
+
+    second = build_index(chunks, cache_dir=tmp_path)
+    assert second.doc_ids == first.doc_ids
+    assert second.search("камеральная проверка") == first.search("камеральная проверка")
+
+
+def test_cache_key_changes_with_corpus(tmp_path):
+    build_index([chunk("a", "nk1/st1/p1", "текст")], cache_dir=tmp_path)
+    build_index([chunk("a", "nk1/st1/p1", "текст"), chunk("b", "nk1/st2/p1", "другой")],
+                cache_dir=tmp_path)
+    assert len(list(tmp_path.glob("bm25-*.pkl"))) == 2
+
+
+def test_cache_key_changes_with_weights(tmp_path):
+    chunks = [chunk("a", "nk1/st1/p1", "текст", title="заголовок")]
+    build_index(chunks, cache_dir=tmp_path, field_weights={"body": 1.0, "title": 0.3, "ref": 2.0})
+    build_index(chunks, cache_dir=tmp_path, field_weights={"body": 1.0, "title": 1.0, "ref": 2.0})
+    assert len(list(tmp_path.glob("bm25-*.pkl"))) == 2

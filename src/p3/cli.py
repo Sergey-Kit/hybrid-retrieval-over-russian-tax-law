@@ -224,7 +224,7 @@ def cmd_evaluate(args) -> None:
         Retrieval, expansion_contribution, indexed_articles, to_articles, to_norms,
     )
 
-    retrieval = Retrieval.load(args.chunks, encoder_name=args.encoder)
+    retrieval = Retrieval.load(args.chunks, encoder_name=args.encoder, corpus=args.corpus)
     available = indexed_articles(retrieval.store)
 
     def read(path):
@@ -504,6 +504,7 @@ def main(argv: list[str] | None = None) -> None:
     ev.add_argument("--split", default="dev", choices=["train", "dev", "test"])
     ev.add_argument("--encoder", default=None)
     ev.add_argument("--expand", action="store_true", help="включить one-hop раскрытие ссылок")
+    ev.add_argument("--corpus", default="nk1.jsonl")
     ev.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "eval" / "report.json")
     ev.set_defaults(func=cmd_evaluate)
 
