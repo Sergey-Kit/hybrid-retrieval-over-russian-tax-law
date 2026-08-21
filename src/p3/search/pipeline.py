@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from p3.search.bm25 import Bm25fIndex, build_index
@@ -23,6 +23,9 @@ class Retrieval:
     dense: DenseIndex | None = None
     encoder: DenseEncoder | None = None
     reranker: Reranker | None = None
+    #: Кэш векторов запросов: конфигурации dense/hybrid/hybrid+rerank прогоняют
+    #: один и тот же набор запросов, и без кэша каждый кодируется трижды.
+    _query_vectors: dict = field(default_factory=dict)
 
     @classmethod
     def load(
@@ -49,11 +52,17 @@ class Retrieval:
     def search_bm25(self, query: str, top_k: int = TOP_CANDIDATES) -> list[tuple[str, float]]:
         return self.bm25.search(query, top_k=top_k)
 
+    def query_vector(self, query: str):
+        cached = self._query_vectors.get(query)
+        if cached is None:
+            cached = self.encoder.encode_queries([query])[0]
+            self._query_vectors[query] = cached
+        return cached
+
     def search_dense(self, query: str, top_k: int = TOP_CANDIDATES) -> list[tuple[str, float]]:
         if self.dense is None or self.encoder is None:
             return []
-        vector = self.encoder.encode_queries([query])[0]
-        return self.dense.search(vector, top_k=top_k)
+        return self.dense.search(self.query_vector(query), top_k=top_k)
 
     # --- конфигурации -----------------------------------------------------
 
