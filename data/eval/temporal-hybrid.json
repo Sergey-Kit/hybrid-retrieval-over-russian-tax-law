@@ -1,0 +1,26 @@
+{
+  "mode": "hybrid",
+  "editions": [
+    144,
+    212,
+    197,
+    236,
+    248
+  ],
+  "temporal_accuracy": {
+    "cases": 70,
+    "correct_version": 45,
+    "correct_version_share": 0.6429,
+    "wrong_version_of_right_norm": 0,
+    "norm_not_found": 25
+  },
+  "filter_cost": {
+    "recall@20_single_edition_baseline": 0.7639,
+    "recall@20_all_versions_with_filter": 0.7639,
+    "drop_vs_baseline_pp": 0.0,
+    "criterion_max_drop_pp": 5.0,
+    "criterion_met": true,
+    "recall@20_all_versions_unfiltered": 0.8194,
+    "duplicate_version_bonus_pp": 5.55
+  }
+}

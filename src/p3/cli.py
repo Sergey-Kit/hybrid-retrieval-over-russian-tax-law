@@ -371,26 +371,38 @@ def cmd_evaluate_temporal(args) -> None:
     )
     today = to_int_date(datetime.date.today())
 
-    def run_plain(query):
-        return to_norms(retrieval.run(query.query, mode=args.mode), retrieval.store)
+    # Базовая линия — индекс одной редакции. Сравнивать с нефильтрованным
+    # индексом всех версий нельзя: там одна норма представлена несколькими
+    # версиями, любая засчитывается как попадание, и у поиска просто больше
+    # попыток. Такой «эталон» вдобавок выдаёт устаревшие редакции, то есть не
+    # является системой, которую кто-то стал бы поставлять.
+    baseline_retrieval = Retrieval.load(args.chunks, encoder_name=args.encoder)
 
-    def run_filtered(query):
-        return to_norms(retrieval.run(query.query, mode=args.mode, as_of=today), retrieval.store)
+    def run_on(source, as_of=None):
+        return lambda query: to_norms(
+            source.run(query.query, mode=args.mode, as_of=as_of), source.store
+        )
 
-    without = evaluate(layer1, run_plain, level="norm").as_dict()
-    with_filter = evaluate(layer1, run_filtered, level="norm").as_dict()
-    drop = round((without["recall@20"] - with_filter["recall@20"]) * 100, 2)
+    baseline = evaluate(layer1, run_on(baseline_retrieval), level="norm").as_dict()
+    unfiltered = evaluate(layer1, run_on(retrieval), level="norm").as_dict()
+    with_filter = evaluate(layer1, run_on(retrieval, today), level="norm").as_dict()
+    drop = round((baseline["recall@20"] - with_filter["recall@20"]) * 100, 2)
+    duplicate_bonus = round((unfiltered["recall@20"] - with_filter["recall@20"]) * 100, 2)
 
     report = {
         "mode": args.mode,
         "editions": rdks,
         "temporal_accuracy": accuracy,
         "filter_cost": {
-            "recall@20_without_filter": without["recall@20"],
-            "recall@20_with_filter": with_filter["recall@20"],
-            "drop_percentage_points": drop,
+            "recall@20_single_edition_baseline": baseline["recall@20"],
+            "recall@20_all_versions_with_filter": with_filter["recall@20"],
+            "drop_vs_baseline_pp": drop,
             "criterion_max_drop_pp": 5.0,
             "criterion_met": drop <= 5.0,
+            # Справочно: насколько нефильтрованный индекс всех версий выглядит
+            # лучше за счёт дублей. Базой сравнения это быть не может.
+            "recall@20_all_versions_unfiltered": unfiltered["recall@20"],
+            "duplicate_version_bonus_pp": duplicate_bonus,
         },
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
