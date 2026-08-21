@@ -1,0 +1,34 @@
+{
+  "encoder": "user-bge-m3",
+  "indexed_articles": 275,
+  "sets": {
+    "silver_dev": {
+      "queries_total": 335,
+      "queries_reachable": 41,
+      "reachable_share": 0.122,
+      "configurations": {
+        "bm25": {
+          "queries": 41,
+          "recall@20": 0.6419,
+          "hit@20": 0.8049,
+          "nDCG@10": 0.4666,
+          "MRR": 0.5047
+        }
+      }
+    },
+    "layer1": {
+      "queries_total": 36,
+      "queries_reachable": 36,
+      "reachable_share": 1.0,
+      "configurations": {
+        "bm25": {
+          "queries": 36,
+          "recall@20": 0.5833,
+          "hit@20": 0.6389,
+          "nDCG@10": 0.469,
+          "MRR": 0.4901
+        }
+      }
+    }
+  }
+}

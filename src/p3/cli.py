@@ -185,6 +185,87 @@ def cmd_build_chunks(args) -> None:
     }, ensure_ascii=False, indent=2))
 
 
+def cmd_build_embeddings(args) -> None:
+    """Векторизовать чанки выбранным энкодером."""
+    import time
+
+    from p3.search.dense import DEFAULT_ENCODER, DenseEncoder, DenseIndex
+
+    path = args.chunks / "nk1.jsonl"
+    chunks = [json.loads(line) for line in path.open(encoding="utf-8")]
+    print(f"чанков: {len(chunks)}; энкодер: {args.encoder}")
+
+    encoder = DenseEncoder(name=args.encoder, batch_size=args.batch_size)
+    texts = [c["text_dense"] for c in chunks]
+
+    started = time.time()
+    vectors = encoder.encode_documents(texts)
+    elapsed = time.time() - started
+
+    index = DenseIndex(doc_ids=[c["chunk_id"] for c in chunks], vectors=vectors)
+    out = args.chunks / f"dense-{args.encoder}.npz"
+    index.save(out)
+    print(json.dumps({
+        "encoder": args.encoder,
+        "device": encoder.device,
+        "vectors": list(vectors.shape),
+        "seconds": round(elapsed, 1),
+        "chunks_per_second": round(len(chunks) / elapsed, 1) if elapsed else None,
+        "out": str(out),
+    }, ensure_ascii=False, indent=2))
+
+
+def cmd_evaluate(args) -> None:
+    """Таблица четырёх конфигураций из ТЗ §7 с разрезами."""
+    from p3.search.evaluate import by_slice, evaluate, load_queries, reachable
+    from p3.search.pipeline import Retrieval, indexed_articles, to_articles, to_norms
+
+    retrieval = Retrieval.load(args.chunks, encoder_name=args.encoder)
+    available = indexed_articles(retrieval.store)
+
+    def read(path):
+        return load_queries(json.loads(line) for line in path.open(encoding="utf-8"))
+
+    sets = {}
+    silver = args.silver / f"{args.split}.jsonl"
+    if silver.exists():
+        sets["silver_" + args.split] = (read(silver), "article")
+    layer1 = args.silver / "layer1.jsonl"
+    if layer1.exists():
+        sets["layer1"] = (read(layer1), "norm")
+
+    report = {"encoder": args.encoder, "indexed_articles": len(available), "sets": {}}
+
+    for name, (queries, level) in sets.items():
+        usable = reachable(queries, available)
+        entry = {
+            "queries_total": len(queries),
+            "queries_reachable": len(usable),
+            "reachable_share": round(len(usable) / len(queries), 3) if queries else 0.0,
+            "configurations": {},
+        }
+        for mode in ("dense", "bm25", "hybrid", "hybrid+rerank"):
+            if mode in ("dense", "hybrid", "hybrid+rerank") and retrieval.dense is None:
+                continue
+
+            def run(query, mode=mode, level=level):
+                hits = retrieval.run(query.query, mode=mode, expand=args.expand)
+                return to_articles(hits, retrieval.store) if level == "article" \
+                    else to_norms(hits, retrieval.store)
+
+            entry["configurations"][mode] = evaluate(usable, run, level=level).as_dict()
+            if mode == "hybrid":
+                entry["by_query_type"] = by_slice(
+                    usable, run, lambda q: q.query_type, level=level
+                )
+        report["sets"][name] = entry
+
+    out = args.out
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+
+
 def cmd_build_layer1(args) -> None:
     """Синтетический набор слоя 1 из разобранного текста НК ч.1."""
     fetcher = PoliteFetcher(RawStore(), offline=True)
@@ -256,12 +337,31 @@ def main(argv: list[str] | None = None) -> None:
     chunks_cmd.add_argument("--rdk", type=int, default=None)
     chunks_cmd.set_defaults(func=cmd_build_chunks)
 
+    emb = add("build-embeddings", "векторизовать чанки")
+    emb.add_argument("--chunks", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "chunks")
+    emb.add_argument("--encoder", default=None)
+    emb.add_argument("--batch-size", type=int, default=8)
+    emb.set_defaults(func=cmd_build_embeddings)
+
+    ev = add("evaluate", "таблица конфигураций поиска")
+    ev.add_argument("--chunks", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "chunks")
+    ev.add_argument("--silver", type=lambda p: __import__("pathlib").Path(p), default=SILVER_DIR)
+    ev.add_argument("--split", default="dev", choices=["train", "dev", "test"])
+    ev.add_argument("--encoder", default=None)
+    ev.add_argument("--expand", action="store_true", help="включить one-hop раскрытие ссылок")
+    ev.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "eval" / "report.json")
+    ev.set_defaults(func=cmd_evaluate)
+
     layer1 = add("build-layer1", "синтетический набор слоя 1 из текста НК")
     layer1.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=SILVER_DIR)
     layer1.add_argument("--rdk", type=int, default=None, help="редакция; по умолчанию последняя")
     layer1.set_defaults(func=cmd_build_layer1)
 
     args = parser.parse_args(argv)
+    if getattr(args, "encoder", "sentinel") is None:
+        from p3.search.dense import DEFAULT_ENCODER
+
+        args.encoder = DEFAULT_ENCODER
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(levelname)s %(message)s",
