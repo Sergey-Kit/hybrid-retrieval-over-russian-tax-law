@@ -39,7 +39,11 @@ _ARTICLE_HEAD_RE = re.compile(
     r"^Статья\s+(?P<number>\d+(?:\.\d+)*(?:-\d+)?)\.?\s*(?P<title>.*)$", re.S
 )
 _CHAPTER_HEAD_RE = re.compile(r"^Глава\s+(?P<number>\d+(?:\.\d+)?)\.?\s*(?P<title>.*)$", re.S)
-_SECTION_HEAD_RE = re.compile(r"^РАЗДЕЛ\s+(?P<number>[IVXL]+)\.?\s*(?P<title>.*)$", re.I | re.S)
+#: «Раздел V. НАЛОГОВАЯ ДЕКЛАРАЦИЯ…», «Раздел V2 …» (надстрочный индекс уже развёрнут
+#: только после цифр, поэтому у римских номеров он остаётся приклеенным).
+_SECTION_HEAD_RE = re.compile(
+    r"^Раздел\s+(?P<number>[IVXL]+(?:\.?\d+)?)\.?\s*(?P<title>.*)$", re.I | re.S
+)
 
 #: Начало пункта: «1. », «12. ». Подпункт идёт как «1) ».
 _CLAUSE_RE = re.compile(r"^(?P<number>\d+(?:\.\d+)?)\.\s+(?=\S)")
@@ -84,7 +88,9 @@ class Article:
     title: str
     part: int
     section: str | None = None
+    section_title: str | None = None
     chapter: str | None = None
+    chapter_title: str | None = None
     clauses: list[Clause] = field(default_factory=list)
     is_repealed: bool = False
 
@@ -103,22 +109,30 @@ def parse_articles(html: str, *, part: int = 1) -> list[Article]:
 
     articles: list[Article] = []
     section: str | None = None
+    section_title: str | None = None
     chapter: str | None = None
+    chapter_title: str | None = None
     current: Article | None = None
 
     for match in _PARAGRAPH_RE.finditer(html):
         css = _CLASS_RE.search(match.group("attrs"))
-        is_header = bool(css) and "H" in css.group(1).split()
+        classes = css.group(1).split() if css else []
+        # Заголовки статей и глав идут классом H, разделы — классом T.
+        is_header = bool({"H", "T"} & set(classes))
         text = _text_of(match.group("body"))
         if not text:
             continue
 
         if is_header:
             if (found := _SECTION_HEAD_RE.match(text)):
-                section, chapter, current = found.group("number"), None, None
+                section = found.group("number")
+                section_title = found.group("title").strip(" .").capitalize() or None
+                chapter = chapter_title = current = None
                 continue
             if (found := _CHAPTER_HEAD_RE.match(text)):
-                chapter, current = found.group("number"), None
+                chapter = found.group("number")
+                chapter_title = found.group("title").strip(" .") or None
+                current = None
                 continue
             if (found := _ARTICLE_HEAD_RE.match(text)):
                 current = Article(
@@ -126,7 +140,9 @@ def parse_articles(html: str, *, part: int = 1) -> list[Article]:
                     title=found.group("title").strip(),
                     part=part,
                     section=section,
+                    section_title=section_title,
                     chapter=chapter,
+                    chapter_title=chapter_title,
                     is_repealed=bool(_REPEALED_RE.search(found.group("title"))),
                 )
                 articles.append(current)
