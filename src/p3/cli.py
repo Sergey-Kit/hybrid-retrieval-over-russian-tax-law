@@ -199,7 +199,7 @@ def cmd_build_embeddings(args) -> None:
     texts = [c["text_dense"] for c in chunks]
 
     started = time.time()
-    vectors = encoder.encode_documents(texts)
+    vectors = encoder.encode_documents(texts, progress_every=max(200, len(texts) // 20))
     elapsed = time.time() - started
 
     index = DenseIndex(doc_ids=[c["chunk_id"] for c in chunks], vectors=vectors)

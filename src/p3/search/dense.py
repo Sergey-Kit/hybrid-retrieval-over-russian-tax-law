@@ -97,15 +97,29 @@ class DenseEncoder:
 
     # --- кодирование ------------------------------------------------------
 
-    def _encode(self, texts: list[str], prefix: str) -> np.ndarray:
+    def _encode(self, texts: list[str], prefix: str, progress_every: int = 0) -> np.ndarray:
+        """`progress_every` > 0 печатает прогресс: длинные прогоны иначе молчат
+        до самого конца, и снаружи не отличить работу от зависания."""
+        import time
+
         import torch
 
         self._ensure_loaded()
         prepared = [prefix + text for text in texts]
         self.assert_fits(prepared)
 
+        started = time.time()
         vectors: list[np.ndarray] = []
         for start in range(0, len(prepared), self.batch_size):
+            if progress_every and start and start % progress_every == 0:
+                done = start / len(prepared)
+                elapsed = time.time() - started
+                remaining = elapsed / done - elapsed if done else 0
+                print(
+                    f"  {start}/{len(prepared)} ({done:.0%}), "
+                    f"прошло {elapsed/60:.0f} мин, осталось ~{remaining/60:.0f} мин",
+                    flush=True,
+                )
             batch = prepared[start : start + self.batch_size]
             encoded = self._tokenizer(
                 batch, padding=True, truncation=False, return_tensors="pt"
@@ -118,8 +132,8 @@ class DenseEncoder:
             vectors.append(embeddings.float().cpu().numpy())
         return np.vstack(vectors) if vectors else np.zeros((0, 1), dtype=np.float32)
 
-    def encode_documents(self, texts: list[str]) -> np.ndarray:
-        return self._encode(texts, self.profile["document_prefix"])
+    def encode_documents(self, texts: list[str], progress_every: int = 0) -> np.ndarray:
+        return self._encode(texts, self.profile["document_prefix"], progress_every)
 
     def encode_queries(self, texts: list[str]) -> np.ndarray:
         return self._encode(texts, self.profile["query_prefix"])
