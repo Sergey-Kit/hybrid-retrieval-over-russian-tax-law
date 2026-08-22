@@ -189,7 +189,7 @@ def cmd_build_embeddings(args) -> None:
     """Векторизовать чанки выбранным энкодером."""
     import time
 
-    from p3.search.dense import DEFAULT_ENCODER, DenseEncoder, DenseIndex
+    from p3.search.dense import DenseEncoder, DenseIndex, corpus_build_id
 
     path = args.chunks / args.corpus
     chunks = [json.loads(line) for line in path.open(encoding="utf-8")]
@@ -202,7 +202,11 @@ def cmd_build_embeddings(args) -> None:
     vectors = encoder.encode_documents(texts, progress_every=max(200, len(texts) // 20))
     elapsed = time.time() - started
 
-    index = DenseIndex(doc_ids=[c["chunk_id"] for c in chunks], vectors=vectors)
+    index = DenseIndex(
+        doc_ids=[c["chunk_id"] for c in chunks],
+        vectors=vectors,
+        build_id=corpus_build_id(chunks),
+    )
     stem = args.corpus.replace(".jsonl", "")
     out = args.chunks / (f"dense-{args.encoder}.npz" if stem == "nk1"
                          else f"dense-{stem}-{args.encoder}.npz")
@@ -442,11 +446,19 @@ def cmd_build_negatives(args) -> None:
         collect_letters(fetcher), source="fns_letter", prefix="let"
     )
 
-    rows = [
-        json.loads(line)
-        for split in ("train", "dev", "test")
-        for line in (args.silver / f"{split}.jsonl").open(encoding="utf-8")
-    ]
+    splits = [args.silver / f"{name}.jsonl" for name in ("train", "dev", "test")]
+    missing = [p for p in splits if not p.exists()]
+    if missing:
+        print(
+            "не найдены сплиты silver set: "
+            + ", ".join(str(p) for p in missing)
+            + "\nСначала выполните: p3 build-silver --out "
+            + str(args.silver),
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    rows = [json.loads(line) for path in splits for line in path.open(encoding="utf-8")]
     negatives += from_unreachable_pairs(rows, available)
 
     out = args.silver / "negatives.jsonl"

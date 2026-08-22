@@ -139,6 +139,23 @@ class DenseEncoder:
         return self._encode(texts, self.profile["query_prefix"])
 
 
+def corpus_build_id(chunks: list[dict]) -> str:
+    """Контентный отпечаток корпуса: те же чанки с тем же текстом — тот же ключ.
+
+    Сверки по количеству и идентификаторам недостаточно. Правка парсера может
+    изменить **текст** чанка, оставив идентификатор прежним: так у одного чанка
+    из 3745 в темпоральном корпусе пропал последний абзац, а проверка это
+    пропустила, потому что смотрела на состав, а не на содержимое.
+    """
+    import hashlib
+
+    digest = hashlib.sha256()
+    for chunk in sorted(chunks, key=lambda c: c["chunk_id"]):
+        digest.update(chunk["chunk_id"].encode())
+        digest.update(chunk.get("text_dense", "").encode())
+    return digest.hexdigest()[:16]
+
+
 @dataclass
 class DenseIndex:
     """Точный поиск перебором. ANN не нужен: спека §3 — на этом объёме
@@ -146,6 +163,9 @@ class DenseIndex:
 
     doc_ids: list[str]
     vectors: np.ndarray
+    #: Отпечаток корпуса, по которому векторы построены. Пусто у файлов,
+    #: записанных до появления проверки.
+    build_id: str = ""
 
     def search(
         self,
@@ -175,9 +195,19 @@ class DenseIndex:
         ]
 
     def save(self, path) -> None:
-        np.savez_compressed(path, doc_ids=np.array(self.doc_ids), vectors=self.vectors)
+        np.savez_compressed(
+            path,
+            doc_ids=np.array(self.doc_ids),
+            vectors=self.vectors,
+            build_id=np.array([self.build_id]),
+        )
 
     @classmethod
     def load(cls, path) -> "DenseIndex":
         data = np.load(path, allow_pickle=False)
-        return cls(doc_ids=[str(x) for x in data["doc_ids"]], vectors=data["vectors"])
+        build = str(data["build_id"][0]) if "build_id" in data else ""
+        return cls(
+            doc_ids=[str(x) for x in data["doc_ids"]],
+            vectors=data["vectors"],
+            build_id=build,
+        )

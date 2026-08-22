@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from p3.search.bm25 import Bm25fIndex, build_index
-from p3.search.dense import DenseEncoder, DenseIndex
+from p3.search.dense import DenseEncoder, DenseIndex, corpus_build_id
 from p3.search.hybrid import ChunkStore, Hit, Reranker, one_hop_expansion, reciprocal_rank_fusion
 
 TOP_CANDIDATES = 50
@@ -58,6 +58,14 @@ class Retrieval:
                 # части первой для корпуса из 9667 чанков. Ошибки не возникало,
                 # dense-канал просто не мог вернуть ничего за пределами части
                 # первой, а метрики выходили правдоподобные.
+                expected = corpus_build_id(chunks)
+                if dense.build_id and dense.build_id != expected:
+                    raise ValueError(
+                        f"векторы построены по другому содержимому корпуса "
+                        f"({dense.build_id} против {expected}). Идентификаторы могли "
+                        f"совпасть, а текст измениться. Пересоберите: "
+                        f"p3 build-embeddings --corpus {corpus or 'nk1.jsonl'}"
+                    )
                 missing = set(dense.doc_ids) - set(store.by_chunk_id)
                 if missing or len(dense.doc_ids) != len(store.by_chunk_id):
                     raise ValueError(

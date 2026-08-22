@@ -101,3 +101,35 @@ def test_index_roundtrip(tmp_path):
     loaded = DenseIndex.load(path)
     assert loaded.doc_ids == ["a", "b"]
     assert loaded.vectors.shape == (2, 2)
+
+
+def test_build_id_detects_changed_text_under_the_same_ids():
+    """Сверки по идентификаторам мало: правка парсера может изменить текст,
+    оставив id прежним. Так у одного чанка из 3745 пропал последний абзац,
+    а проверка состава этого не заметила."""
+    from p3.search.dense import corpus_build_id
+
+    before = [{"chunk_id": "a#0", "text_dense": "первый абзац"}]
+    after = [{"chunk_id": "a#0", "text_dense": "первый абзац\nвторой абзац"}]
+    assert corpus_build_id(before) != corpus_build_id(after)
+
+
+def test_build_id_is_order_independent():
+    from p3.search.dense import corpus_build_id
+
+    a = [{"chunk_id": "a#0", "text_dense": "x"}, {"chunk_id": "b#0", "text_dense": "y"}]
+    assert corpus_build_id(a) == corpus_build_id(list(reversed(a)))
+
+
+def test_build_id_survives_save_and_load(tmp_path):
+    index = DenseIndex(doc_ids=["a"], vectors=np.eye(1, 2, dtype=np.float32), build_id="deadbeef")
+    path = tmp_path / "v.npz"
+    index.save(path)
+    assert DenseIndex.load(path).build_id == "deadbeef"
+
+
+def test_legacy_file_without_build_id_still_loads(tmp_path):
+    """Файлы, записанные до появления проверки, не должны ломать загрузку."""
+    path = tmp_path / "old.npz"
+    np.savez_compressed(path, doc_ids=np.array(["a"]), vectors=np.eye(1, 2, dtype=np.float32))
+    assert DenseIndex.load(path).build_id == ""
