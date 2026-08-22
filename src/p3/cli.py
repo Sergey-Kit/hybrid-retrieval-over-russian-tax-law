@@ -419,7 +419,7 @@ def cmd_render_results(args) -> None:
     """Собрать раздел результатов из файлов замеров."""
     from p3.report import render
 
-    text = render(args.eval, args.temporal)
+    text = render(args.eval, args.temporal, lang=args.lang)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(text + "\n", encoding="utf-8")
     print(text)
@@ -567,6 +567,7 @@ def main(argv: list[str] | None = None) -> None:
     rr.add_argument("--eval", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "eval" / "test.json")
     rr.add_argument("--temporal", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "eval" / "temporal.json")
     rr.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "eval" / "RESULTS.md")
+    rr.add_argument("--lang", default="ru", choices=["ru", "en"])
     rr.set_defaults(func=cmd_render_results)
 
     neg = add("build-negatives", "негативы: запросы без ответа в корпусе")

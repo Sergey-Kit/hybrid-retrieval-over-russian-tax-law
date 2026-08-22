@@ -266,3 +266,26 @@ def test_ndcg_credits_each_gold_item_once_at_its_best_rank():
     one_late = ndcg_at_k(["nk1/st1/p1", "x", "y", "nk1/st2/p1"], gold, 10)
     assert both_first == 1.0
     assert one_late < both_first
+
+
+def test_report_renders_identical_numbers_in_both_languages(tmp_path):
+    """README есть на двух языках; цифры в них обязаны совпадать, иначе одна
+    из версий тихо устареет."""
+    import re
+    from p3.report import render
+
+    report = {
+        "encoder": "x", "indexed_articles": 10,
+        "sets": {"silver_test": {
+            "queries_total": 100, "queries_reachable": 90, "reachable_share": 0.9,
+            "configurations": {"bm25": {
+                "queries": 90, "recall@20": 0.682, "hit@20": 0.764, "recall@8": 0.556,
+                "nDCG@10": 0.451, "MRR": 0.458, "latency_ms_median": 16.0,
+                "recall_ceiling": 0.997,
+            }},
+        }},
+    }
+    path = tmp_path / "eval.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+    numbers = lambda text: re.findall(r"\d+\.\d{3}", text)
+    assert numbers(render(path, lang="ru")) == numbers(render(path, lang="en"))

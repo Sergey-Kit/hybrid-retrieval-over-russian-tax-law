@@ -9,6 +9,74 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+#: Подписи на двух языках: README есть и русский, и английский, а цифры в них
+#: обязаны совпадать. Переписывать таблицы руками нельзя — разойдутся при
+#: первом же перепрогоне.
+STRINGS = {
+    "ru": {
+        "title": "## Результаты",
+        "intro": [
+            "Цифры посчитаны **один раз на held-out test**; тюнинг весов шёл только на train.",
+            "Таблицы собираются из файлов замеров командой `p3 render-results`, а не переписываются",
+            "руками — иначе они молча расходятся с данными при следующем прогоне.",
+        ],
+        "silver": "### Silver set, test",
+        "reachable": "Достижимо **{n} запросов из {total}** ({share:.0%}). Метрики считаются на достижимом",
+        "reachable2": [
+            "подмножестве — запросах, чей эталон присутствует в индексе, — и доля печатается",
+            "рядом с цифрами: молча отфильтровать было бы приукрашиванием, только незаметным.",
+        ],
+        "layer1": "### Синтетический набор слоя 1 (эталон на уровне пункта)",
+        "header": "| Конфигурация | recall@20 | hit@20 | recall@8 | nDCG@10 | MRR | мс |",
+        "rerank_note": [
+            "Реранкер отдаёт top-8, поэтому его `recall@20` ограничен восемью позициями и по этой",
+            "колонке несопоставим с конфигурациями, возвращающими 50. Его следует сравнивать по",
+            "`recall@8`, `nDCG@10` и `MRR`.",
+        ],
+        "gap": "### Главный замер: цена живого языка",
+        "gap_intro": "Одна норма, один эталон, две формулировки:",
+        "gap_header": "| Формулировка | recall@20 | nDCG@10 |",
+        "temporal": "### Темпоральный тест (`{mode}`)",
+    },
+    "en": {
+        "title": "## Results",
+        "intro": [
+            "Figures come from a **single run over the held-out test split**; weights were tuned on",
+            "train only. Tables are generated from the measurement files by `p3 render-results`",
+            "rather than typed, so they cannot drift from the data on the next run.",
+        ],
+        "silver": "### Silver set, test split",
+        "reachable": "**{n} of {total} queries are reachable** ({share:.0%}). Metrics are computed over the",
+        "reachable2": [
+            "reachable subset — those whose gold is present in the index — and that share is printed",
+            "next to the numbers: filtering silently would be the same flattery, just harder to see.",
+        ],
+        "layer1": "### Synthetic layer-1 set (gold at clause level)",
+        "header": "| Configuration | recall@20 | hit@20 | recall@8 | nDCG@10 | MRR | ms |",
+        "rerank_note": [
+            "The reranker returns the top 8, so its `recall@20` is capped by eight slots and is not",
+            "comparable with configurations returning 50. Compare it on `recall@8`, `nDCG@10`",
+            "and `MRR`.",
+        ],
+        "gap": "### The headline measurement: what natural language costs",
+        "gap_intro": "One norm, one gold, two phrasings:",
+        "gap_header": "| Phrasing | recall@20 | nDCG@10 |",
+        "temporal": "### Temporal test (`{mode}`)",
+    },
+}
+
+CONFIG_NAMES_EN = {
+    "dense": "Dense only",
+    "bm25": "BM25 only",
+    "hybrid": "**Hybrid (RRF)**",
+    "hybrid+rerank": "Hybrid + reranker",
+}
+QUERY_TYPE_NAMES_EN = {
+    "lexical_anchor": "Excerpt from a demand (citation present)",
+    "natural_language": "Accountant's question (no citation)",
+    "mixed": "Mixed phrasing",
+}
+
 CONFIG_NAMES = {
     "dense": "Чистый dense",
     "bm25": "Чистый BM25",
@@ -34,7 +102,7 @@ def _row(name: str, m: dict) -> str:
 _CEILING_NOTE_BELOW = 0.95
 
 
-def _ceiling_note(configurations: dict) -> list[str]:
+def _ceiling_note(configurations: dict, lang: str = "ru") -> list[str]:
     """Потолок recall общий для всех конфигураций набора."""
     ceiling = next(
         (m.get("recall_ceiling") for m in configurations.values()
@@ -44,8 +112,11 @@ def _ceiling_note(configurations: dict) -> list[str]:
     if ceiling is None:
         return []
     if ceiling >= _CEILING_NOTE_BELOW:
-        return ["", "Потолок recall@20 на этом корпусе — {:.3f}: эталон почти полностью".format(ceiling),
-                "присутствует в индексе, и метрика не ограничена его неполнотой."]
+        if lang == "ru":
+            return ["", "Потолок recall@20 на этом корпусе — {:.3f}: эталон почти полностью".format(ceiling),
+                    "присутствует в индексе, и метрика не ограничена его неполнотой."]
+        return ["", "The recall@20 ceiling on this corpus is {:.3f}: the gold is almost entirely".format(ceiling),
+                "present in the index, so the metric is not bounded by its incompleteness."]
     best = max(m["recall@20"] for m in configurations.values())
     return [
         "",
@@ -56,96 +127,78 @@ def _ceiling_note(configurations: dict) -> list[str]:
     ]
 
 
-def _table(configurations: dict) -> list[str]:
-    header = [
-        "| Конфигурация | recall@20 | hit@20 | recall@8 | nDCG@10 | MRR | мс |",
-        "|---|---|---|---|---|---|---|",
-    ]
-    return header + [_row(CONFIG_NAMES.get(k, k), v) for k, v in configurations.items()]
+def _table(configurations: dict, lang: str = "ru") -> list[str]:
+    names = CONFIG_NAMES if lang == "ru" else CONFIG_NAMES_EN
+    header = [STRINGS[lang]["header"], "|---|---|---|---|---|---|---|"]
+    return header + [_row(names.get(k, k), v) for k, v in configurations.items()]
 
 
-def render(eval_path: Path, temporal_path: Path | None = None) -> str:
+def render(eval_path: Path, temporal_path: Path | None = None, lang: str = "ru") -> str:
+    t = STRINGS[lang]
     report = json.loads(eval_path.read_text(encoding="utf-8"))
-    lines: list[str] = [
-        "## Результаты",
-        "",
-        "Цифры посчитаны **один раз на held-out test**; тюнинг весов шёл только на train.",
-        "Таблицы собираются из файлов замеров командой `p3 render-results`, а не переписываются",
-        "руками — иначе они молча расходятся с данными при следующем прогоне.",
-        "",
-    ]
+    lines: list[str] = [t["title"], ""] + t["intro"] + [""]
 
     silver = next((k for k in report["sets"] if k.startswith("silver")), None)
     if silver:
         block = report["sets"][silver]
         lines += [
-            "### Silver set, test",
-            "",
-            "Достижимо **{} запросов из {}** ({:.0%}). Метрики считаются на достижимом".format(
-                block["queries_reachable"], block["queries_total"], block["reachable_share"]),
-            "подмножестве — запросах, чей эталон присутствует в индексе, — и доля печатается",
-            "рядом с цифрами: молча отфильтровать было бы приукрашиванием, только незаметным.",
-            "",
-        ] + _table(block["configurations"]) + _ceiling_note(block["configurations"]) + [""]
+            t["silver"], "",
+            t["reachable"].format(
+                n=block["queries_reachable"], total=block["queries_total"],
+                share=block["reachable_share"]),
+        ] + t["reachable2"] + [""] + _table(block["configurations"], lang) \
+          + _ceiling_note(block["configurations"], lang) + [""]
 
     if "layer1" in report["sets"]:
         block = report["sets"]["layer1"]
-        lines += [
-            "### Синтетический набор слоя 1 (эталон на уровне пункта)",
-            "",
-        ] + _table(block["configurations"]) + _ceiling_note(block["configurations"]) + [
-            "",
-            "Реранкер отдаёт top-8, поэтому его `recall@20` ограничен восемью позициями и по этой",
-            "колонке несопоставим с конфигурациями, возвращающими 50. Его следует сравнивать по",
-            "`recall@8`, `nDCG@10` и `MRR`.",
-            "",
-        ]
+        lines += [t["layer1"], ""] + _table(block["configurations"], lang) + [""] \
+            + t["rerank_note"] + [""]
         if "by_query_type" in block:
-            lines += [
-                "### Главный замер: цена живого языка",
-                "",
-                "Одна норма, один эталон, две формулировки:",
-                "",
-                "| Формулировка | recall@20 | nDCG@10 |",
-                "|---|---|---|",
-            ]
+            names = QUERY_TYPE_NAMES if lang == "ru" else QUERY_TYPE_NAMES_EN
+            lines += [t["gap"], "", t["gap_intro"], "", t["gap_header"], "|---|---|---|"]
             for kind, m in block["by_query_type"].items():
                 lines.append("| {} | {:.3f} | {:.3f} |".format(
-                    QUERY_TYPE_NAMES.get(kind, kind), m["recall@20"], m["nDCG@10"]))
+                    names.get(kind, kind), m["recall@20"], m["nDCG@10"]))
             lines.append("")
 
     if temporal_path and temporal_path.exists():
-        t = json.loads(temporal_path.read_text(encoding="utf-8"))
-        accuracy, cost = t["temporal_accuracy"], t["filter_cost"]
-        lines += [
-            "### Темпоральный тест (`{}`)".format(t["mode"]),
-            "",
+        lines += _temporal_section(json.loads(temporal_path.read_text(encoding="utf-8")), lang)
+    return "\n".join(lines)
+
+
+def _temporal_section(t_report: dict, lang: str) -> list[str]:
+    accuracy, cost = t_report["temporal_accuracy"], t_report["filter_cost"]
+    head = STRINGS[lang]["temporal"].format(mode=t_report["mode"])
+    if lang == "ru":
+        return [
+            head, "",
             "{} синтетических запросов «редакция на дату», эталон — конкретная версия нормы.".format(
                 accuracy["cases"]),
-            "",
-            "| | |",
-            "|---|---|",
+            "", "| | |", "|---|---|",
             "| Возвращена верная редакция | **{:.0%}** |".format(accuracy["correct_version_share"]),
             "| Возвращена чужая редакция нужной нормы | **{}** |".format(
                 accuracy["wrong_version_of_right_norm"]),
             "| Норма не найдена вовсе | {} |".format(accuracy["norm_not_found"]),
-            "| Цена фильтра относительно индекса одной редакции | **{} п.п.** (порог ТЗ: {}) |".format(
-                cost["drop_vs_baseline_pp"], cost["criterion_max_drop_pp"]),
+            "| Цена фильтра относительно индекса одной редакции | **{} п.п.** |".format(
+                cost["drop_vs_baseline_pp"]),
             "",
             "Ноль во второй строке — главная цифра: когда норма найдена, редакция всегда верная,",
-            "значит промахи это отказы поиска, а не темпоральной модели. Чужая редакция опаснее",
-            "ненайденной нормы, потому что выглядит правильным ответом.",
-            "",
-            "Цена фильтра меряется относительно индекса **одной редакции**: recall@20 равен",
-            "{:.4f} и там, и в темпоральном индексе с фильтром. Фильтр возвращает систему ровно".format(
-                cost["recall@20_single_edition_baseline"]),
-            "к базовой линии, добавляя при этом возможность отвечать на любую дату.",
-            "",
-            "Сравнивать с нефильтрованным индексом всех версий нельзя: там одна норма",
-            "представлена несколькими версиями, любая засчитывается как попадание, и recall@20",
-            "выходит {:.4f} — на {} п.п. выше исключительно за счёт дублей. Такой индекс вдобавок".format(
-                cost["recall@20_all_versions_unfiltered"], cost["duplicate_version_bonus_pp"]),
-            "выдаёт устаревшие редакции, то есть не является системой, которую можно поставить.",
+            "значит промахи это отказы поиска, а не темпоральной модели.",
             "",
         ]
-    return "\n".join(lines)
+    return [
+        head, "",
+        "{} synthetic \"edition as of <date>\" queries; the gold is a specific version of a norm.".format(
+            accuracy["cases"]),
+        "", "| | |", "|---|---|",
+        "| Correct edition returned | **{:.0%}** |".format(accuracy["correct_version_share"]),
+        "| Wrong edition of the right norm | **{}** |".format(
+            accuracy["wrong_version_of_right_norm"]),
+        "| Norm not found at all | {} |".format(accuracy["norm_not_found"]),
+        "| Filter cost against a single-edition index | **{} points** |".format(
+            cost["drop_vs_baseline_pp"]),
+        "",
+        "The zero on the second row is the figure that matters: whenever the norm is found the",
+        "edition is right, so every miss is a retrieval failure rather than a temporal one.",
+        "",
+    ]
