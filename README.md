@@ -4,12 +4,13 @@ Retrieval over the Tax Code of the Russian Federation with **temporal correctnes
 "what the Code says" but *"what the Code said on date X"*. No generation — the project
 boundary is returning the right spans of law.
 
-Specification: [`P3_retrieval_SPEC.md`](P3_retrieval_SPEC.md) (Russian). Full documentation is
+Specification: [`P3_retrieval_SPEC.md`](P3_retrieval_SPEC.md) (Russian). It cites internal
+product-planning documents that are not published here. Full documentation is
 in Russian; this file is the English summary. Both report **actual state**, including where
 reality diverged from the specification and where a measurement proved me wrong.
 
 ```bash
-pip install -r requirements.txt && python -m pytest -q     # 287 tests
+pip install -r requirements.txt && python -m pytest -q     # 301 tests
 ```
 
 ---
@@ -183,6 +184,24 @@ src/p3/
 Everything downloaded is stored byte-for-byte before parsing, hashed, and recorded in a
 manifest; re-runs read from cache. Numbers in the documentation are **generated** by
 `p3 render-results`, never typed.
+
+---
+
+## Licence
+
+Code and documentation are MIT. The texts of the Tax Code, complaint decisions and
+tax-authority letters under `data/` are not subject to copyright under article 1259(6) of
+the Russian Civil Code, being official documents of state bodies.
+
+---
+
+## What is and is not in this repository
+
+What cannot be reconstructed from it is here: the silver-set labels, the raw-data manifest
+with hashes, and the measurement files. **Chunks and vectors are not** — they are a function
+of the raw data and the code, weigh 96 MB, and, more importantly, drift out of step with the
+corpus without saying so. Rebuild them with the commands below; a mismatch now fails on a
+content hash rather than producing wrong numbers.
 
 ---
 
