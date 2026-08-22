@@ -1,9 +1,30 @@
 {
+  "positives": 331,
+  "negatives": 45,
+  "by_reason": {
+    "gold_outside_nk": 5,
+    "norm_removed_from_edition": 40
+  },
+  "bm25_top1": {
+    "auc": 0.5031,
+    "positives": 331,
+    "negatives": 45,
+    "median_positive": 13.8165,
+    "median_negative": 13.4369
+  },
+  "dense_top1": {
+    "auc": 0.7039,
+    "positives": 331,
+    "negatives": 45,
+    "median_positive": 0.6753,
+    "median_negative": 0.6431
+  },
   "reranker_top1": {
     "auc": 0.7746,
     "positives": 331,
     "negatives": 45,
     "median_positive": 2.6816,
     "median_negative": 0.4233
-  }
+  },
+  "note": "Реранкер отсекает вопросы вне НК (медиана -2.2), но не отличает норму, изъятую из редакции (0.61 против 2.68 у позитивов)."
 }
