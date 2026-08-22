@@ -121,10 +121,10 @@
           "hit@8": 0.8056,
           "recall_ceiling": 1.0,
           "recall_share_of_achievable": 0.8194,
-          "nDCG@10": 0.6467,
+          "nDCG@10": 0.5548,
           "MRR": 0.5274,
-          "latency_ms_median": 63.2,
-          "latency_ms_p90": 82.9
+          "latency_ms_median": 64.2,
+          "latency_ms_p90": 92.7
         },
         "bm25": {
           "queries": 36,
@@ -134,10 +134,10 @@
           "hit@8": 0.6667,
           "recall_ceiling": 1.0,
           "recall_share_of_achievable": 0.6389,
-          "nDCG@10": 0.655,
+          "nDCG@10": 0.5601,
           "MRR": 0.5864,
-          "latency_ms_median": 15.2,
-          "latency_ms_p90": 49.1
+          "latency_ms_median": 10.1,
+          "latency_ms_p90": 12.7
         },
         "hybrid": {
           "queries": 36,
@@ -147,10 +147,10 @@
           "hit@8": 0.8333,
           "recall_ceiling": 1.0,
           "recall_share_of_achievable": 0.8194,
-          "nDCG@10": 0.8022,
+          "nDCG@10": 0.6656,
           "MRR": 0.6664,
-          "latency_ms_median": 15.6,
-          "latency_ms_p90": 18.8
+          "latency_ms_median": 15.7,
+          "latency_ms_p90": 22.3
         },
         "hybrid+rerank": {
           "queries": 36,
@@ -160,10 +160,10 @@
           "hit@8": 0.9167,
           "recall_ceiling": 1.0,
           "recall_share_of_achievable": 0.8472,
-          "nDCG@10": 0.922,
+          "nDCG@10": 0.8044,
           "MRR": 0.838,
-          "latency_ms_median": 15246.7,
-          "latency_ms_p90": 18339.9
+          "latency_ms_median": 15304.0,
+          "latency_ms_p90": 18385.3
         }
       },
       "by_query_type": {
@@ -175,10 +175,10 @@
           "hit@8": 0.9444,
           "recall_ceiling": 1.0,
           "recall_share_of_achievable": 0.8611,
-          "nDCG@10": 1.1327,
+          "nDCG@10": 0.8595,
           "MRR": 0.9187,
-          "latency_ms_median": 15.5,
-          "latency_ms_p90": 17.8
+          "latency_ms_median": 17.0,
+          "latency_ms_p90": 19.1
         },
         "natural_language": {
           "queries": 18,
@@ -190,8 +190,8 @@
           "recall_share_of_achievable": 0.7778,
           "nDCG@10": 0.4717,
           "MRR": 0.4141,
-          "latency_ms_median": 15.2,
-          "latency_ms_p90": 20.5
+          "latency_ms_median": 16.6,
+          "latency_ms_p90": 20.6
         }
       },
       "one_hop_expansion": {

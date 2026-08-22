@@ -29,6 +29,11 @@ def _row(name: str, m: dict) -> str:
     )
 
 
+#: Ниже этого потолка оговорка осмысленна. При 0.99+ разница между «достижимым»
+#: и «возможным» меньше погрешности, и пояснение превращается в шум.
+_CEILING_NOTE_BELOW = 0.95
+
+
 def _ceiling_note(configurations: dict) -> list[str]:
     """Потолок recall общий для всех конфигураций набора."""
     ceiling = next(
@@ -36,15 +41,18 @@ def _ceiling_note(configurations: dict) -> list[str]:
          if m.get("recall_ceiling") is not None),
         None,
     )
-    if ceiling is None or ceiling >= 0.999:
+    if ceiling is None:
         return []
+    if ceiling >= _CEILING_NOTE_BELOW:
+        return ["", "Потолок recall@20 на этом корпусе — {:.3f}: эталон почти полностью".format(ceiling),
+                "присутствует в индексе, и метрика не ограничена его неполнотой."]
     best = max(m["recall@20"] for m in configurations.values())
     return [
         "",
         "**Потолок recall@20 на этом корпусе — {:.3f}.** Фильтр достижимости требует, чтобы в".format(ceiling),
         "индексе была хоть одна эталонная статья, а не все, поэтому часть эталона недостижима",
-        "физически. Лучший результат {:.3f} — это **{:.0%} достижимого**, а не {:.0%} возможного.".format(
-            best, best / ceiling, best),
+        "физически: даже идеальный поиск не превысил бы этой величины. Лучший результат {:.3f} —".format(best),
+        "это **{:.0%} достижимого**.".format(best / ceiling),
     ]
 
 
@@ -73,10 +81,10 @@ def render(eval_path: Path, temporal_path: Path | None = None) -> str:
         lines += [
             "### Silver set, test",
             "",
-            "Достижимо **{} запросов из {}** ({:.0%}): в индексе только часть первая, а набор".format(
+            "Достижимо **{} запросов из {}** ({:.0%}). Метрики считаются на достижимом".format(
                 block["queries_reachable"], block["queries_total"], block["reachable_share"]),
-            "построен из решений и писем, где большинство упоминаний — статьи части второй.",
-            "Метрики считаются на достижимом подмножестве, доля печатается рядом.",
+            "подмножестве — запросах, чей эталон присутствует в индексе, — и доля печатается",
+            "рядом с цифрами: молча отфильтровать было бы приукрашиванием, только незаметным.",
             "",
         ] + _table(block["configurations"]) + _ceiling_note(block["configurations"]) + [""]
 
