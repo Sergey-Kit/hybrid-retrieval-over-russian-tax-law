@@ -425,6 +425,42 @@ def cmd_render_results(args) -> None:
     print(text)
 
 
+def cmd_build_negatives(args) -> None:
+    """Собрать негативы из тех же источников, что и позитивы."""
+    from p3.search.pipeline import Retrieval, indexed_articles
+    from p3.silver.collect import collect_decisions, collect_letters
+    from p3.silver.negatives import from_agency_items, from_unreachable_pairs, write_jsonl
+
+    fetcher = PoliteFetcher(RawStore(), offline=True)
+    retrieval = Retrieval.load(args.chunks, corpus=args.corpus)
+    available = indexed_articles(retrieval.store)
+
+    negatives = from_agency_items(
+        collect_decisions(fetcher), source="fns_complaint_decision", prefix="dec"
+    )
+    negatives += from_agency_items(
+        collect_letters(fetcher), source="fns_letter", prefix="let"
+    )
+
+    rows = [
+        json.loads(line)
+        for split in ("train", "dev", "test")
+        for line in (args.silver / f"{split}.jsonl").open(encoding="utf-8")
+    ]
+    negatives += from_unreachable_pairs(rows, available)
+
+    out = args.silver / "negatives.jsonl"
+    write_jsonl(negatives, out)
+    by_reason: dict[str, int] = {}
+    for item in negatives:
+        by_reason[item.reason] = by_reason.get(item.reason, 0) + 1
+    print(json.dumps({
+        "negatives": len(negatives),
+        "by_reason": by_reason,
+        "out": str(out),
+    }, ensure_ascii=False, indent=2))
+
+
 def cmd_build_layer1(args) -> None:
     """Синтетический набор слоя 1 из разобранного текста НК ч.1."""
     fetcher = PoliteFetcher(RawStore(), offline=True)
@@ -532,6 +568,12 @@ def main(argv: list[str] | None = None) -> None:
     rr.add_argument("--temporal", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "eval" / "temporal.json")
     rr.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "eval" / "RESULTS.md")
     rr.set_defaults(func=cmd_render_results)
+
+    neg = add("build-negatives", "негативы: запросы без ответа в корпусе")
+    neg.add_argument("--chunks", type=lambda p: __import__("pathlib").Path(p), default=DATA_DIR / "chunks")
+    neg.add_argument("--silver", type=lambda p: __import__("pathlib").Path(p), default=SILVER_DIR)
+    neg.add_argument("--corpus", default="nk-full.jsonl")
+    neg.set_defaults(func=cmd_build_negatives)
 
     layer1 = add("build-layer1", "синтетический набор слоя 1 из текста НК")
     layer1.add_argument("--out", type=lambda p: __import__("pathlib").Path(p), default=SILVER_DIR)
