@@ -1,0 +1,9 @@
+{
+  "reranker_top1": {
+    "auc": 0.7746,
+    "positives": 331,
+    "negatives": 45,
+    "median_positive": 2.6816,
+    "median_negative": 0.4233
+  }
+}
