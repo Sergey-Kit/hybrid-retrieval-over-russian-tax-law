@@ -1,0 +1,205 @@
+{
+  "encoder": "user-bge-m3",
+  "indexed_articles": 815,
+  "sets": {
+    "silver_test": {
+      "queries_total": 337,
+      "queries_reachable": 331,
+      "reachable_share": 0.982,
+      "configurations": {
+        "dense": {
+          "queries": 331,
+          "recall@20": 0.6648,
+          "hit@20": 0.7372,
+          "recall@8": 0.5887,
+          "hit@8": 0.6707,
+          "recall_ceiling": 0.997,
+          "recall_share_of_achievable": 0.6668,
+          "nDCG@10": 0.4905,
+          "MRR": 0.5028,
+          "latency_ms_median": 96.1,
+          "latency_ms_p90": 200.9
+        },
+        "bm25": {
+          "queries": 331,
+          "recall@20": 0.6822,
+          "hit@20": 0.7644,
+          "recall@8": 0.5559,
+          "hit@8": 0.6375,
+          "recall_ceiling": 0.997,
+          "recall_share_of_achievable": 0.6843,
+          "nDCG@10": 0.4506,
+          "MRR": 0.4579,
+          "latency_ms_median": 16.4,
+          "latency_ms_p90": 25.1
+        },
+        "hybrid": {
+          "queries": 331,
+          "recall@20": 0.6888,
+          "hit@20": 0.7674,
+          "recall@8": 0.6275,
+          "hit@8": 0.713,
+          "recall_ceiling": 0.997,
+          "recall_share_of_achievable": 0.6909,
+          "nDCG@10": 0.5268,
+          "MRR": 0.5335,
+          "latency_ms_median": 23.9,
+          "latency_ms_p90": 33.3
+        },
+        "hybrid+rerank": {
+          "queries": 331,
+          "recall@20": 0.5958,
+          "hit@20": 0.6798,
+          "recall@8": 0.5958,
+          "hit@8": 0.6798,
+          "recall_ceiling": 0.997,
+          "recall_share_of_achievable": 0.5976,
+          "nDCG@10": 0.5359,
+          "MRR": 0.5631,
+          "latency_ms_median": 17591.0,
+          "latency_ms_p90": 21385.8
+        }
+      },
+      "by_query_type": {
+        "lexical_anchor": {
+          "queries": 1,
+          "recall@20": 0.0,
+          "hit@20": 0.0,
+          "recall@8": 0.0,
+          "hit@8": 0.0,
+          "recall_ceiling": 1.0,
+          "recall_share_of_achievable": 0.0,
+          "nDCG@10": 0.0,
+          "MRR": 0.0217,
+          "latency_ms_median": 15.4,
+          "latency_ms_p90": 15.4
+        },
+        "mixed": {
+          "queries": 40,
+          "recall@20": 0.811,
+          "hit@20": 0.925,
+          "recall@8": 0.7205,
+          "hit@8": 0.8,
+          "recall_ceiling": 0.9875,
+          "recall_share_of_achievable": 0.8213,
+          "nDCG@10": 0.6161,
+          "MRR": 0.5902,
+          "latency_ms_median": 24.2,
+          "latency_ms_p90": 34.8
+        },
+        "natural_language": {
+          "queries": 290,
+          "recall@20": 0.6744,
+          "hit@20": 0.7483,
+          "recall@8": 0.6168,
+          "hit@8": 0.7034,
+          "recall_ceiling": 0.9983,
+          "recall_share_of_achievable": 0.6755,
+          "nDCG@10": 0.5163,
+          "MRR": 0.5274,
+          "latency_ms_median": 24.4,
+          "latency_ms_p90": 33.3
+        }
+      },
+      "one_hop_expansion": {
+        "queries": 331,
+        "gold_reached_only_via_expansion": 0,
+        "share_only_via_expansion": 0.0,
+        "queries_where_expansion_added_gold": 0
+      }
+    },
+    "layer1": {
+      "queries_total": 36,
+      "queries_reachable": 36,
+      "reachable_share": 1.0,
+      "configurations": {
+        "dense": {
+          "queries": 36,
+          "recall@20": 0.8194,
+          "hit@20": 0.8889,
+          "recall@8": 0.7361,
+          "hit@8": 0.8056,
+          "recall_ceiling": 1.0,
+          "recall_share_of_achievable": 0.8194,
+          "nDCG@10": 0.6467,
+          "MRR": 0.5274,
+          "latency_ms_median": 63.2,
+          "latency_ms_p90": 82.9
+        },
+        "bm25": {
+          "queries": 36,
+          "recall@20": 0.6389,
+          "hit@20": 0.6944,
+          "recall@8": 0.6111,
+          "hit@8": 0.6667,
+          "recall_ceiling": 1.0,
+          "recall_share_of_achievable": 0.6389,
+          "nDCG@10": 0.655,
+          "MRR": 0.5864,
+          "latency_ms_median": 15.2,
+          "latency_ms_p90": 49.1
+        },
+        "hybrid": {
+          "queries": 36,
+          "recall@20": 0.8194,
+          "hit@20": 0.8889,
+          "recall@8": 0.7778,
+          "hit@8": 0.8333,
+          "recall_ceiling": 1.0,
+          "recall_share_of_achievable": 0.8194,
+          "nDCG@10": 0.8022,
+          "MRR": 0.6664,
+          "latency_ms_median": 15.6,
+          "latency_ms_p90": 18.8
+        },
+        "hybrid+rerank": {
+          "queries": 36,
+          "recall@20": 0.8472,
+          "hit@20": 0.9167,
+          "recall@8": 0.8472,
+          "hit@8": 0.9167,
+          "recall_ceiling": 1.0,
+          "recall_share_of_achievable": 0.8472,
+          "nDCG@10": 0.922,
+          "MRR": 0.838,
+          "latency_ms_median": 15246.7,
+          "latency_ms_p90": 18339.9
+        }
+      },
+      "by_query_type": {
+        "lexical_anchor": {
+          "queries": 18,
+          "recall@20": 0.8611,
+          "hit@20": 0.9444,
+          "recall@8": 0.8611,
+          "hit@8": 0.9444,
+          "recall_ceiling": 1.0,
+          "recall_share_of_achievable": 0.8611,
+          "nDCG@10": 1.1327,
+          "MRR": 0.9187,
+          "latency_ms_median": 15.5,
+          "latency_ms_p90": 17.8
+        },
+        "natural_language": {
+          "queries": 18,
+          "recall@20": 0.7778,
+          "hit@20": 0.8333,
+          "recall@8": 0.6944,
+          "hit@8": 0.7222,
+          "recall_ceiling": 1.0,
+          "recall_share_of_achievable": 0.7778,
+          "nDCG@10": 0.4717,
+          "MRR": 0.4141,
+          "latency_ms_median": 15.2,
+          "latency_ms_p90": 20.5
+        }
+      },
+      "one_hop_expansion": {
+        "queries": 36,
+        "gold_reached_only_via_expansion": 0,
+        "share_only_via_expansion": 0.0,
+        "queries_where_expansion_added_gold": 0
+      }
+    }
+  }
+}

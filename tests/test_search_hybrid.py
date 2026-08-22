@@ -250,3 +250,19 @@ def test_ceiling_is_one_when_all_gold_is_indexed():
 def test_ceiling_defaults_to_one_without_index_information():
     queries = [EvalQuery("q", "…", frozenset({"nk1/st88"}), frozenset(), "t", "s")]
     assert evaluate(queries, lambda q: []).as_dict()["recall_ceiling"] == 1.0
+
+
+def test_ndcg_never_exceeds_one_with_level_aware_matching():
+    """Эталон уровня статьи удовлетворяется любым её пунктом; если в выдаче
+    их несколько, все набирали вклад при знаменателе на один элемент.
+    На наборе слоя 1 это дало nDCG@10 = 1.13."""
+    gold = frozenset({"nk1/st6.1"})
+    assert ndcg_at_k(["nk1/st6.1/p1", "nk1/st6.1/p2", "nk1/st6.1/p6"], gold, 10) == 1.0
+
+
+def test_ndcg_credits_each_gold_item_once_at_its_best_rank():
+    gold = frozenset({"nk1/st1", "nk1/st2"})
+    both_first = ndcg_at_k(["nk1/st1/p1", "nk1/st2/p1"], gold, 10)
+    one_late = ndcg_at_k(["nk1/st1/p1", "x", "y", "nk1/st2/p1"], gold, 10)
+    assert both_first == 1.0
+    assert one_late < both_first

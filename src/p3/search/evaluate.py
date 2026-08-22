@@ -83,11 +83,24 @@ def reciprocal_rank(retrieved: list[str], gold: frozenset[str]) -> float:
 
 
 def ndcg_at_k(retrieved: list[str], gold: frozenset[str], k: int) -> float:
-    gain = sum(
-        1.0 / math.log2(rank + 1)
-        for rank, item in enumerate(retrieved[:k], start=1)
-        if item in gold or any(item.startswith(g + "/") for g in gold)
-    )
+    """Каждый элемент эталона засчитывается **один раз**, по лучшей позиции.
+
+    Без этого уровне-зависимое сопоставление ломает метрику: эталон «nk1/st6.1»
+    удовлетворяется любым её пунктом, и если в выдаче окажутся p1, p2 и p6, все
+    три наберут вклад, тогда как знаменатель рассчитан на один релевантный
+    элемент. На наборе слоя 1 это давало nDCG@10 = 1.13 — величину, невозможную
+    по определению.
+    """
+    credited: set[str] = set()
+    gain = 0.0
+    for rank, item in enumerate(retrieved[:k], start=1):
+        for target in gold:
+            if target in credited:
+                continue
+            if item == target or item.startswith(target + "/"):
+                gain += 1.0 / math.log2(rank + 1)
+                credited.add(target)
+                break
     ideal = sum(1.0 / math.log2(rank + 1) for rank in range(1, min(len(gold), k) + 1))
     return gain / ideal if ideal else 0.0
 
