@@ -4,8 +4,6 @@
 пакета нет — тесты пропускаются, а не падают: наличие СУБД не должно быть
 условием прогона всего набора.
 """
-import json
-
 import pytest
 
 from p3.store.pg import PgChunkStore, corpus_build_id, schema_sql
@@ -32,14 +30,15 @@ def chunk(chunk_id, norm_unit_id, *, valid_from=None, valid_to=99991231,
 
 @pytest.fixture(scope="module")
 def store(tmp_path_factory):
-    import os
     import pgserver
     import psycopg
 
-    runtime = tmp_path_factory.mktemp("xdg")
-    runtime.chmod(0o700)
-    os.environ.setdefault("XDG_RUNTIME_DIR", str(runtime))
-    server = pgserver.get_server(tmp_path_factory.mktemp("pgdata"), cleanup_mode="stop")
+    # XDG_RUNTIME_DIR подменяется в conftest — до импорта pgserver, который
+    # вычисляет путь к файлу блокировки на импорте модуля.
+    try:
+        server = pgserver.get_server(tmp_path_factory.mktemp("pgdata"), cleanup_mode="stop")
+    except Exception as exc:  # noqa: BLE001 — среда без работающего сервера
+        pytest.skip(f"PostgreSQL не поднялся: {exc}")
     with psycopg.connect(server.get_uri()) as connection:
         item = PgChunkStore(connection)
         item.create_schema()
