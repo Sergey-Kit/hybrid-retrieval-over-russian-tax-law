@@ -24,8 +24,8 @@ pip install -r requirements.txt && python -m pytest -q     # 287 tests
 | 2c | Negatives and score-separability measurement | **done** |
 | 3 | Real entry-into-force dates | not started |
 
-Corpus: **8198 chunks over 815 articles** of both parts. Deliberately deferred: a three-way
-encoder comparison, chapter-level references.
+Corpus: **8198 chunks over 815 articles** of both parts, in PostgreSQL and in in-memory
+indexes. Deliberately deferred: a three-way encoder comparison, chapter-level references.
 
 ---
 
