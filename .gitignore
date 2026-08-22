@@ -18,3 +18,4 @@ venv/
 # WSL / Windows
 *:Zone.Identifier
 .DS_Store
+data/pgdata/
