@@ -13,6 +13,12 @@ reality diverged from the specification and where a measurement proved me wrong.
 pip install -r requirements.txt && python -m pytest -q     # 301 tests
 ```
 
+Or as a package, so P4 and P5 import it instead of patching `sys.path` (pip 22.0, which Ubuntu 22.04 puts into a fresh venv, fails on editable installs; verified with pip 26 — run `python -m pip install -U pip` first):
+
+```bash
+pip install -e ".[search,test]"   # p3 + dense channel and reranker; drop [search] for parsing only
+```
+
 ---
 
 ## Status

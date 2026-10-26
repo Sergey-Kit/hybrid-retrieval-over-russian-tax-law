@@ -13,6 +13,12 @@
 pip install -r requirements.txt && python -m pytest -q     # 301 тест
 ```
 
+Или пакетом — тогда P4 и P5 импортируют его, а не правят `sys.path` (pip 22.0, который Ubuntu 22.04 кладёт в новый venv, на editable-установке падает; проверено на pip 26 — сначала `python -m pip install -U pip`):
+
+```bash
+pip install -e ".[search,test]"   # p3 + dense-канал и реранкер; без [search] — только разбор
+```
+
 ---
 
 ## Что работает

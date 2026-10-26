@@ -1,0 +1,30 @@
+[project]
+name = "p3"
+version = "0.2.0"
+description = "Гибридный retrieval по Налоговому кодексу РФ с темпоральным фильтром"
+requires-python = ">=3.10"
+# Ядро: сбор, парсинг НК, нормализатор ссылок, BM25. Без GPU-стека.
+dependencies = [
+    "requests>=2.32",
+    "lxml>=5.3",
+    "beautifulsoup4>=4.12",
+    "pymorphy3>=2.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+# Dense-канал и реранкер.
+search = ["torch>=2.0", "transformers>=4.40"]
+# Хранилище в PostgreSQL; без него индексы живут в памяти.
+store = ["psycopg[binary]>=3.2", "pgserver>=0.1.4"]
+test = ["pytest>=8.3"]
+
+[project.scripts]
+p3 = "p3.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
